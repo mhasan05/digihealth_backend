@@ -1,0 +1,812 @@
+{
+  "info": {
+    "name": "DigiHealth API",
+    "description": "Complete API collection for DigiHealth hospital management system.\n\n## Setup\n1. Import this collection into Postman.\n2. Create an environment with `base_url = http://localhost:8000`.\n3. Use **Auth → Login** or **Auth → Demo Login** — the test script auto-saves the JWT to `{{token}}`.\n4. All protected endpoints use `Authorization: Bearer {{token}}` automatically.\n\n## Demo roles\n- `admin`, `owner`, `manager`, `pathologist`, `patient`",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "base_url", "value": "http://localhost:8000", "type": "string" },
+    { "key": "token",    "value": "",                      "type": "string" }
+  ],
+  "auth": {
+    "type": "bearer",
+    "bearer": [{ "key": "token", "value": "{{token}}", "type": "string" }]
+  },
+  "item": [
+
+    {
+      "name": "Auth",
+      "item": [
+
+        {
+          "name": "Login",
+          "event": [{ "listen": "test", "script": { "exec": [
+            "var json = pm.response.json();",
+            "if (json.token) { pm.collectionVariables.set('token', json.token); }"
+          ], "type": "text/javascript" } }],
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"identifier\": \"+8801700000001\",\n  \"password\": \"admin123\",\n  \"method\": \"phone\"\n}"
+            },
+            "url": { "raw": "{{base_url}}/api/auth/login/", "host": ["{{base_url}}"], "path": ["api", "auth", "login", ""] }
+          }
+        },
+
+        {
+          "name": "Demo Login",
+          "event": [{ "listen": "test", "script": { "exec": [
+            "var json = pm.response.json();",
+            "if (json.token) { pm.collectionVariables.set('token', json.token); }"
+          ], "type": "text/javascript" } }],
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"role\": \"admin\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": { "raw": "{{base_url}}/api/auth/demo-login/", "host": ["{{base_url}}"], "path": ["api", "auth", "demo-login", ""] },
+            "description": "role can be: admin | owner | manager | pathologist | patient"
+          }
+        },
+
+        {
+          "name": "Register Patient",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"John Doe\",\n  \"phone\": \"+8801900000099\",\n  \"password\": \"secret123\",\n  \"age\": 30,\n  \"gender\": \"Male\",\n  \"blood_group\": \"O+\"\n}"
+            },
+            "url": { "raw": "{{base_url}}/api/auth/register/", "host": ["{{base_url}}"], "path": ["api", "auth", "register", ""] }
+          }
+        },
+
+        {
+          "name": "Logout",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": { "raw": "{{base_url}}/api/auth/logout/", "host": ["{{base_url}}"], "path": ["api", "auth", "logout", ""] }
+          }
+        }
+
+      ]
+    },
+
+    {
+      "name": "Admin",
+      "item": [
+
+        {
+          "name": "Get Dashboard",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{base_url}}/api/admin/dashboard/", "host": ["{{base_url}}"], "path": ["api", "admin", "dashboard", ""] }
+          }
+        },
+
+        {
+          "name": "List Hospitals",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{base_url}}/api/admin/hospitals/", "host": ["{{base_url}}"], "path": ["api", "admin", "hospitals", ""] }
+          }
+        },
+
+        {
+          "name": "Create Hospital",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name_en\": \"City General Hospital\",\n  \"name_bn\": \"সিটি জেনারেল হাসপাতাল\",\n  \"address\": \"123 Main Street, Dhaka\",\n  \"phone\": \"+8801700000010\",\n  \"email\": \"info@citygeneral.com\",\n  \"type\": \"General\",\n  \"status\": \"Active\",\n  \"owner_name\": \"Rahim Uddin\",\n  \"owner_phone\": \"+8801800000010\",\n  \"owner_email\": \"rahim@citygeneral.com\",\n  \"owner_password\": \"owner123\"\n}"
+            },
+            "url": { "raw": "{{base_url}}/api/admin/hospitals/", "host": ["{{base_url}}"], "path": ["api", "admin", "hospitals", ""] }
+          }
+        },
+
+        {
+          "name": "Get Hospital",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{base_url}}/api/admin/hospitals/:id/", "host": ["{{base_url}}"], "path": ["api", "admin", "hospitals", ":id", ""], "variable": [{ "key": "id", "value": "{{hospital_id}}" }] }
+          }
+        },
+
+        {
+          "name": "Update Hospital",
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name_en\": \"City General Hospital (Updated)\",\n  \"address\": \"456 New Street, Dhaka\"\n}"
+            },
+            "url": { "raw": "{{base_url}}/api/admin/hospitals/:id/", "host": ["{{base_url}}"], "path": ["api", "admin", "hospitals", ":id", ""], "variable": [{ "key": "id", "value": "{{hospital_id}}" }] }
+          }
+        },
+
+        {
+          "name": "Delete Hospital",
+          "request": {
+            "method": "DELETE",
+            "url": { "raw": "{{base_url}}/api/admin/hospitals/:id/", "host": ["{{base_url}}"], "path": ["api", "admin", "hospitals", ":id", ""], "variable": [{ "key": "id", "value": "{{hospital_id}}" }] }
+          }
+        },
+
+        {
+          "name": "Toggle Hospital Status",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": { "raw": "{{base_url}}/api/admin/hospitals/:id/toggle-status/", "host": ["{{base_url}}"], "path": ["api", "admin", "hospitals", ":id", "toggle-status", ""], "variable": [{ "key": "id", "value": "{{hospital_id}}" }] }
+          }
+        }
+
+      ]
+    },
+
+    {
+      "name": "Owner",
+      "item": [
+
+        {
+          "name": "Get Dashboard",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{base_url}}/api/owner/dashboard/", "host": ["{{base_url}}"], "path": ["api", "owner", "dashboard", ""] }
+          }
+        },
+
+        {
+          "name": "Co-Owners",
+          "item": [
+            {
+              "name": "List Co-Owners",
+              "request": {
+                "method": "GET",
+                "url": { "raw": "{{base_url}}/api/owner/co-owners/", "host": ["{{base_url}}"], "path": ["api", "owner", "co-owners", ""] }
+              }
+            },
+            {
+              "name": "Add Co-Owner",
+              "request": {
+                "method": "POST",
+                "header": [{ "key": "Content-Type", "value": "application/json" }],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"name\": \"Karim Hossain\",\n  \"phone\": \"+8801600000020\",\n  \"email\": \"karim@hospital.com\",\n  \"password\": \"coowner123\"\n}"
+                },
+                "url": { "raw": "{{base_url}}/api/owner/co-owners/", "host": ["{{base_url}}"], "path": ["api", "owner", "co-owners", ""] }
+              }
+            },
+            {
+              "name": "Remove Co-Owner",
+              "request": {
+                "method": "DELETE",
+                "url": { "raw": "{{base_url}}/api/owner/co-owners/:id/", "host": ["{{base_url}}"], "path": ["api", "owner", "co-owners", ":id", ""], "variable": [{ "key": "id", "value": "{{co_owner_id}}" }] }
+              }
+            }
+          ]
+        },
+
+        {
+          "name": "Managers",
+          "item": [
+            {
+              "name": "List Managers",
+              "request": {
+                "method": "GET",
+                "url": { "raw": "{{base_url}}/api/owner/managers/", "host": ["{{base_url}}"], "path": ["api", "owner", "managers", ""] }
+              }
+            },
+            {
+              "name": "Add Manager",
+              "request": {
+                "method": "POST",
+                "header": [{ "key": "Content-Type", "value": "application/json" }],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"name\": \"Nasrin Begum\",\n  \"phone\": \"+8801700000030\",\n  \"email\": \"nasrin@hospital.com\",\n  \"password\": \"manager123\"\n}"
+                },
+                "url": { "raw": "{{base_url}}/api/owner/managers/", "host": ["{{base_url}}"], "path": ["api", "owner", "managers", ""] }
+              }
+            },
+            {
+              "name": "Update Manager",
+              "request": {
+                "method": "PUT",
+                "header": [{ "key": "Content-Type", "value": "application/json" }],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"name\": \"Nasrin Begum (Updated)\"\n}"
+                },
+                "url": { "raw": "{{base_url}}/api/owner/managers/:id/", "host": ["{{base_url}}"], "path": ["api", "owner", "managers", ":id", ""], "variable": [{ "key": "id", "value": "{{manager_id}}" }] }
+              }
+            },
+            {
+              "name": "Delete Manager",
+              "request": {
+                "method": "DELETE",
+                "url": { "raw": "{{base_url}}/api/owner/managers/:id/", "host": ["{{base_url}}"], "path": ["api", "owner", "managers", ":id", ""], "variable": [{ "key": "id", "value": "{{manager_id}}" }] }
+              }
+            }
+          ]
+        },
+
+        {
+          "name": "Pathologists",
+          "item": [
+            {
+              "name": "List Pathologists",
+              "request": {
+                "method": "GET",
+                "url": { "raw": "{{base_url}}/api/owner/pathologists/", "host": ["{{base_url}}"], "path": ["api", "owner", "pathologists", ""] }
+              }
+            },
+            {
+              "name": "Add Pathologist",
+              "request": {
+                "method": "POST",
+                "header": [{ "key": "Content-Type", "value": "application/json" }],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"name\": \"Dr. Sumaiya Islam\",\n  \"phone\": \"+8801800000040\",\n  \"email\": \"sumaiya@hospital.com\",\n  \"password\": \"path123\",\n  \"specialization\": \"Clinical Pathology\"\n}"
+                },
+                "url": { "raw": "{{base_url}}/api/owner/pathologists/", "host": ["{{base_url}}"], "path": ["api", "owner", "pathologists", ""] }
+              }
+            },
+            {
+              "name": "Update Pathologist",
+              "request": {
+                "method": "PUT",
+                "header": [{ "key": "Content-Type", "value": "application/json" }],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"specialization\": \"Hematology\"\n}"
+                },
+                "url": { "raw": "{{base_url}}/api/owner/pathologists/:id/", "host": ["{{base_url}}"], "path": ["api", "owner", "pathologists", ":id", ""], "variable": [{ "key": "id", "value": "{{pathologist_id}}" }] }
+              }
+            },
+            {
+              "name": "Delete Pathologist",
+              "request": {
+                "method": "DELETE",
+                "url": { "raw": "{{base_url}}/api/owner/pathologists/:id/", "host": ["{{base_url}}"], "path": ["api", "owner", "pathologists", ":id", ""], "variable": [{ "key": "id", "value": "{{pathologist_id}}" }] }
+              }
+            }
+          ]
+        },
+
+        {
+          "name": "Doctors",
+          "item": [
+            {
+              "name": "List Doctors",
+              "request": {
+                "method": "GET",
+                "url": { "raw": "{{base_url}}/api/owner/doctors/", "host": ["{{base_url}}"], "path": ["api", "owner", "doctors", ""] }
+              }
+            },
+            {
+              "name": "Add Doctor",
+              "request": {
+                "method": "POST",
+                "header": [{ "key": "Content-Type", "value": "application/json" }],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"name\": \"Dr. Tanvir Ahmed\",\n  \"phone\": \"+8801900000050\",\n  \"email\": \"tanvir@hospital.com\",\n  \"password\": \"doctor123\",\n  \"specialization\": \"Cardiology\",\n  \"department\": \"Cardiology\",\n  \"consultation_fee\": \"800.00\"\n}"
+                },
+                "url": { "raw": "{{base_url}}/api/owner/doctors/", "host": ["{{base_url}}"], "path": ["api", "owner", "doctors", ""] }
+              }
+            },
+            {
+              "name": "Update Doctor",
+              "request": {
+                "method": "PUT",
+                "header": [{ "key": "Content-Type", "value": "application/json" }],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"consultation_fee\": \"1000.00\"\n}"
+                },
+                "url": { "raw": "{{base_url}}/api/owner/doctors/:id/", "host": ["{{base_url}}"], "path": ["api", "owner", "doctors", ":id", ""], "variable": [{ "key": "id", "value": "{{doctor_id}}" }] }
+              }
+            },
+            {
+              "name": "Delete Doctor",
+              "request": {
+                "method": "DELETE",
+                "url": { "raw": "{{base_url}}/api/owner/doctors/:id/", "host": ["{{base_url}}"], "path": ["api", "owner", "doctors", ":id", ""], "variable": [{ "key": "id", "value": "{{doctor_id}}" }] }
+              }
+            }
+          ]
+        },
+
+        {
+          "name": "Nurses",
+          "item": [
+            {
+              "name": "List Nurses",
+              "request": {
+                "method": "GET",
+                "url": { "raw": "{{base_url}}/api/owner/nurses/", "host": ["{{base_url}}"], "path": ["api", "owner", "nurses", ""] }
+              }
+            },
+            {
+              "name": "Add Nurse",
+              "request": {
+                "method": "POST",
+                "header": [{ "key": "Content-Type", "value": "application/json" }],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"name\": \"Fatema Khatun\",\n  \"phone\": \"+8801500000060\",\n  \"email\": \"fatema@hospital.com\",\n  \"password\": \"nurse123\",\n  \"department\": \"General Ward\",\n  \"shift\": \"Morning\"\n}"
+                },
+                "url": { "raw": "{{base_url}}/api/owner/nurses/", "host": ["{{base_url}}"], "path": ["api", "owner", "nurses", ""] }
+              }
+            },
+            {
+              "name": "Update Nurse",
+              "request": {
+                "method": "PUT",
+                "header": [{ "key": "Content-Type", "value": "application/json" }],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"shift\": \"Evening\"\n}"
+                },
+                "url": { "raw": "{{base_url}}/api/owner/nurses/:id/", "host": ["{{base_url}}"], "path": ["api", "owner", "nurses", ":id", ""], "variable": [{ "key": "id", "value": "{{nurse_id}}" }] }
+              }
+            },
+            {
+              "name": "Delete Nurse",
+              "request": {
+                "method": "DELETE",
+                "url": { "raw": "{{base_url}}/api/owner/nurses/:id/", "host": ["{{base_url}}"], "path": ["api", "owner", "nurses", ":id", ""], "variable": [{ "key": "id", "value": "{{nurse_id}}" }] }
+              }
+            }
+          ]
+        },
+
+        {
+          "name": "Beds",
+          "item": [
+            {
+              "name": "List Beds",
+              "request": {
+                "method": "GET",
+                "url": { "raw": "{{base_url}}/api/owner/beds/", "host": ["{{base_url}}"], "path": ["api", "owner", "beds", ""] }
+              }
+            },
+            {
+              "name": "Add Bed",
+              "request": {
+                "method": "POST",
+                "header": [{ "key": "Content-Type", "value": "application/json" }],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"number\": \"B-101\",\n  \"ward\": \"General Ward\",\n  \"type\": \"General\",\n  \"price_per_day\": \"500.00\"\n}"
+                },
+                "url": { "raw": "{{base_url}}/api/owner/beds/", "host": ["{{base_url}}"], "path": ["api", "owner", "beds", ""] }
+              }
+            },
+            {
+              "name": "Update Bed",
+              "request": {
+                "method": "PUT",
+                "header": [{ "key": "Content-Type", "value": "application/json" }],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"price_per_day\": \"600.00\",\n  \"status\": \"Available\"\n}"
+                },
+                "url": { "raw": "{{base_url}}/api/owner/beds/:id/", "host": ["{{base_url}}"], "path": ["api", "owner", "beds", ":id", ""], "variable": [{ "key": "id", "value": "{{bed_id}}" }] }
+              }
+            },
+            {
+              "name": "Delete Bed",
+              "request": {
+                "method": "DELETE",
+                "url": { "raw": "{{base_url}}/api/owner/beds/:id/", "host": ["{{base_url}}"], "path": ["api", "owner", "beds", ":id", ""], "variable": [{ "key": "id", "value": "{{bed_id}}" }] }
+              }
+            }
+          ]
+        },
+
+        {
+          "name": "Lab Tests",
+          "item": [
+            {
+              "name": "List Lab Tests",
+              "request": {
+                "method": "GET",
+                "url": { "raw": "{{base_url}}/api/owner/lab-tests/", "host": ["{{base_url}}"], "path": ["api", "owner", "lab-tests", ""] }
+              }
+            },
+            {
+              "name": "Add Lab Test",
+              "request": {
+                "method": "POST",
+                "header": [{ "key": "Content-Type", "value": "application/json" }],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"name\": \"Complete Blood Count (CBC)\",\n  \"price\": \"350.00\",\n  \"duration\": \"2-4 hours\",\n  \"available\": true\n}"
+                },
+                "url": { "raw": "{{base_url}}/api/owner/lab-tests/", "host": ["{{base_url}}"], "path": ["api", "owner", "lab-tests", ""] }
+              }
+            },
+            {
+              "name": "Update Lab Test",
+              "request": {
+                "method": "PUT",
+                "header": [{ "key": "Content-Type", "value": "application/json" }],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"price\": \"400.00\",\n  \"available\": true\n}"
+                },
+                "url": { "raw": "{{base_url}}/api/owner/lab-tests/:id/", "host": ["{{base_url}}"], "path": ["api", "owner", "lab-tests", ":id", ""], "variable": [{ "key": "id", "value": "{{lab_test_id}}" }] }
+              }
+            },
+            {
+              "name": "Delete Lab Test",
+              "request": {
+                "method": "DELETE",
+                "url": { "raw": "{{base_url}}/api/owner/lab-tests/:id/", "host": ["{{base_url}}"], "path": ["api", "owner", "lab-tests", ":id", ""], "variable": [{ "key": "id", "value": "{{lab_test_id}}" }] }
+              }
+            }
+          ]
+        }
+
+      ]
+    },
+
+    {
+      "name": "Manager",
+      "item": [
+
+        {
+          "name": "Get Dashboard",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{base_url}}/api/manager/dashboard/", "host": ["{{base_url}}"], "path": ["api", "manager", "dashboard", ""] }
+          }
+        },
+
+        {
+          "name": "Appointments",
+          "item": [
+            {
+              "name": "List Appointments",
+              "request": {
+                "method": "GET",
+                "url": { "raw": "{{base_url}}/api/manager/appointments/", "host": ["{{base_url}}"], "path": ["api", "manager", "appointments", ""] }
+              }
+            },
+            {
+              "name": "Create Appointment",
+              "request": {
+                "method": "POST",
+                "header": [{ "key": "Content-Type", "value": "application/json" }],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"patient_id\": \"{{patient_id}}\",\n  \"doctor_id\": \"{{doctor_id}}\",\n  \"date\": \"2026-05-15\",\n  \"time\": \"10:30\",\n  \"reason\": \"Routine check-up\"\n}"
+                },
+                "url": { "raw": "{{base_url}}/api/manager/appointments/", "host": ["{{base_url}}"], "path": ["api", "manager", "appointments", ""] }
+              }
+            },
+            {
+              "name": "Update Appointment",
+              "request": {
+                "method": "PUT",
+                "header": [{ "key": "Content-Type", "value": "application/json" }],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"date\": \"2026-05-16\",\n  \"time\": \"11:00\",\n  \"reason\": \"Follow-up\"\n}"
+                },
+                "url": { "raw": "{{base_url}}/api/manager/appointments/:id/", "host": ["{{base_url}}"], "path": ["api", "manager", "appointments", ":id", ""], "variable": [{ "key": "id", "value": "{{appointment_id}}" }] }
+              }
+            },
+            {
+              "name": "Delete Appointment",
+              "request": {
+                "method": "DELETE",
+                "url": { "raw": "{{base_url}}/api/manager/appointments/:id/", "host": ["{{base_url}}"], "path": ["api", "manager", "appointments", ":id", ""], "variable": [{ "key": "id", "value": "{{appointment_id}}" }] }
+              }
+            },
+            {
+              "name": "Confirm Appointment",
+              "request": {
+                "method": "POST",
+                "header": [],
+                "url": { "raw": "{{base_url}}/api/manager/appointments/:id/confirm/", "host": ["{{base_url}}"], "path": ["api", "manager", "appointments", ":id", "confirm", ""], "variable": [{ "key": "id", "value": "{{appointment_id}}" }] }
+              }
+            },
+            {
+              "name": "Cancel Appointment",
+              "request": {
+                "method": "POST",
+                "header": [],
+                "url": { "raw": "{{base_url}}/api/manager/appointments/:id/cancel/", "host": ["{{base_url}}"], "path": ["api", "manager", "appointments", ":id", "cancel", ""], "variable": [{ "key": "id", "value": "{{appointment_id}}" }] }
+              }
+            },
+            {
+              "name": "Admit Patient",
+              "request": {
+                "method": "POST",
+                "header": [{ "key": "Content-Type", "value": "application/json" }],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"bed_id\": \"{{bed_id}}\",\n  \"nurse_id\": \"{{nurse_id}}\"\n}"
+                },
+                "url": { "raw": "{{base_url}}/api/manager/appointments/:id/admit/", "host": ["{{base_url}}"], "path": ["api", "manager", "appointments", ":id", "admit", ""], "variable": [{ "key": "id", "value": "{{appointment_id}}" }] }
+              }
+            }
+          ]
+        },
+
+        {
+          "name": "Admissions",
+          "item": [
+            {
+              "name": "List Admissions",
+              "request": {
+                "method": "GET",
+                "url": { "raw": "{{base_url}}/api/manager/admissions/", "host": ["{{base_url}}"], "path": ["api", "manager", "admissions", ""] }
+              }
+            },
+            {
+              "name": "Get Available Beds",
+              "request": {
+                "method": "GET",
+                "url": { "raw": "{{base_url}}/api/manager/available-beds/", "host": ["{{base_url}}"], "path": ["api", "manager", "available-beds", ""] }
+              }
+            },
+            {
+              "name": "Get Available Nurses",
+              "request": {
+                "method": "GET",
+                "url": { "raw": "{{base_url}}/api/manager/available-nurses/", "host": ["{{base_url}}"], "path": ["api", "manager", "available-nurses", ""] }
+              }
+            }
+          ]
+        },
+
+        {
+          "name": "Lab Orders",
+          "item": [
+            {
+              "name": "List Lab Orders",
+              "request": {
+                "method": "GET",
+                "url": { "raw": "{{base_url}}/api/manager/lab-orders/", "host": ["{{base_url}}"], "path": ["api", "manager", "lab-orders", ""] }
+              }
+            },
+            {
+              "name": "Create Lab Order",
+              "request": {
+                "method": "POST",
+                "header": [{ "key": "Content-Type", "value": "application/json" }],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"patient_id\": \"{{patient_id}}\",\n  \"test_id\": \"{{lab_test_id}}\",\n  \"ordered_by_doctor_id\": \"{{doctor_id}}\"\n}"
+                },
+                "url": { "raw": "{{base_url}}/api/manager/lab-orders/", "host": ["{{base_url}}"], "path": ["api", "manager", "lab-orders", ""] }
+              }
+            },
+            {
+              "name": "Assign Pathologist",
+              "request": {
+                "method": "POST",
+                "header": [{ "key": "Content-Type", "value": "application/json" }],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"pathologist_id\": \"{{pathologist_id}}\"\n}"
+                },
+                "url": { "raw": "{{base_url}}/api/manager/lab-orders/:id/assign/", "host": ["{{base_url}}"], "path": ["api", "manager", "lab-orders", ":id", "assign", ""], "variable": [{ "key": "id", "value": "{{lab_order_id}}" }] }
+              }
+            },
+            {
+              "name": "Cancel Lab Order",
+              "request": {
+                "method": "POST",
+                "header": [],
+                "url": { "raw": "{{base_url}}/api/manager/lab-orders/:id/cancel/", "host": ["{{base_url}}"], "path": ["api", "manager", "lab-orders", ":id", "cancel", ""], "variable": [{ "key": "id", "value": "{{lab_order_id}}" }] }
+              }
+            },
+            {
+              "name": "Get Lab Result",
+              "request": {
+                "method": "GET",
+                "url": { "raw": "{{base_url}}/api/manager/lab-orders/:id/result/", "host": ["{{base_url}}"], "path": ["api", "manager", "lab-orders", ":id", "result", ""], "variable": [{ "key": "id", "value": "{{lab_order_id}}" }] }
+              }
+            }
+          ]
+        },
+
+        {
+          "name": "Helpers",
+          "item": [
+            {
+              "name": "Get Doctors",
+              "request": {
+                "method": "GET",
+                "url": { "raw": "{{base_url}}/api/manager/doctors/", "host": ["{{base_url}}"], "path": ["api", "manager", "doctors", ""] }
+              }
+            },
+            {
+              "name": "Get Patients",
+              "request": {
+                "method": "GET",
+                "url": { "raw": "{{base_url}}/api/manager/patients/", "host": ["{{base_url}}"], "path": ["api", "manager", "patients", ""] }
+              }
+            },
+            {
+              "name": "Create Walk-in Patient",
+              "request": {
+                "method": "POST",
+                "header": [{ "key": "Content-Type", "value": "application/json" }],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"name\": \"Walk-in Patient\",\n  \"phone\": \"+8801700009999\",\n  \"age\": 35,\n  \"gender\": \"Female\",\n  \"blood_group\": \"A+\"\n}"
+                },
+                "url": { "raw": "{{base_url}}/api/manager/walk-in-patient/", "host": ["{{base_url}}"], "path": ["api", "manager", "walk-in-patient", ""] }
+              }
+            }
+          ]
+        }
+
+      ]
+    },
+
+    {
+      "name": "Pathologist",
+      "item": [
+
+        {
+          "name": "Get Dashboard",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{base_url}}/api/pathologist/dashboard/", "host": ["{{base_url}}"], "path": ["api", "pathologist", "dashboard", ""] }
+          }
+        },
+
+        {
+          "name": "Get Upcoming Tests",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{base_url}}/api/pathologist/upcoming-tests/", "host": ["{{base_url}}"], "path": ["api", "pathologist", "upcoming-tests", ""] }
+          }
+        },
+
+        {
+          "name": "Submit Lab Result",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"findings\": \"Hemoglobin: 13.5 g/dL (Normal range: 13.5-17.5)\nWBC: 7200/μL (Normal range: 4500-11000)\nPlatelet: 210000/μL (Normal range: 150000-400000)\",\n  \"remarks\": \"Normal\"\n}"
+            },
+            "url": { "raw": "{{base_url}}/api/pathologist/lab-orders/:id/submit-result/", "host": ["{{base_url}}"], "path": ["api", "pathologist", "lab-orders", ":id", "submit-result", ""], "variable": [{ "key": "id", "value": "{{lab_order_id}}" }] }
+          }
+        },
+
+        {
+          "name": "Get Completed Reports",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{base_url}}/api/pathologist/completed-reports/", "host": ["{{base_url}}"], "path": ["api", "pathologist", "completed-reports", ""] }
+          }
+        }
+
+      ]
+    },
+
+    {
+      "name": "Patient",
+      "item": [
+
+        {
+          "name": "Get My Profile",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{base_url}}/api/patient/me/", "host": ["{{base_url}}"], "path": ["api", "patient", "me", ""] }
+          }
+        },
+
+        {
+          "name": "Health Metrics",
+          "item": [
+            {
+              "name": "List Metrics",
+              "request": {
+                "method": "GET",
+                "url": { "raw": "{{base_url}}/api/patient/metrics/", "host": ["{{base_url}}"], "path": ["api", "patient", "metrics", ""] }
+              }
+            },
+            {
+              "name": "Add Metric",
+              "request": {
+                "method": "POST",
+                "header": [{ "key": "Content-Type", "value": "application/json" }],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"type\": \"Blood Pressure\",\n  \"value\": \"120/80\",\n  \"unit\": \"mmHg\",\n  \"recorded_at\": \"2026-05-08T09:00:00Z\"\n}"
+                },
+                "url": { "raw": "{{base_url}}/api/patient/metrics/", "host": ["{{base_url}}"], "path": ["api", "patient", "metrics", ""] }
+              }
+            },
+            {
+              "name": "Update Metric",
+              "request": {
+                "method": "PUT",
+                "header": [{ "key": "Content-Type", "value": "application/json" }],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"value\": \"118/76\"\n}"
+                },
+                "url": { "raw": "{{base_url}}/api/patient/metrics/:id/", "host": ["{{base_url}}"], "path": ["api", "patient", "metrics", ":id", ""], "variable": [{ "key": "id", "value": "{{metric_id}}" }] }
+              }
+            },
+            {
+              "name": "Delete Metric",
+              "request": {
+                "method": "DELETE",
+                "url": { "raw": "{{base_url}}/api/patient/metrics/:id/", "host": ["{{base_url}}"], "path": ["api", "patient", "metrics", ":id", ""], "variable": [{ "key": "id", "value": "{{metric_id}}" }] }
+              }
+            }
+          ]
+        },
+
+        {
+          "name": "Medical Reports",
+          "item": [
+            {
+              "name": "List Reports",
+              "request": {
+                "method": "GET",
+                "url": { "raw": "{{base_url}}/api/patient/reports/", "host": ["{{base_url}}"], "path": ["api", "patient", "reports", ""] }
+              }
+            },
+            {
+              "name": "Upload Report",
+              "request": {
+                "method": "POST",
+                "header": [{ "key": "Content-Type", "value": "application/json" }],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"title\": \"Blood Test Report\",\n  \"description\": \"CBC results from City Lab\",\n  \"file_url\": \"https://example.com/reports/cbc-2026.pdf\",\n  \"report_date\": \"2026-05-01\"\n}"
+                },
+                "url": { "raw": "{{base_url}}/api/patient/reports/", "host": ["{{base_url}}"], "path": ["api", "patient", "reports", ""] }
+              }
+            },
+            {
+              "name": "Delete Report",
+              "request": {
+                "method": "DELETE",
+                "url": { "raw": "{{base_url}}/api/patient/reports/:id/", "host": ["{{base_url}}"], "path": ["api", "patient", "reports", ":id", ""], "variable": [{ "key": "id", "value": "{{report_id}}" }] }
+              }
+            }
+          ]
+        },
+
+        {
+          "name": "Get Privacy Log",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{base_url}}/api/patient/privacy-log/", "host": ["{{base_url}}"], "path": ["api", "patient", "privacy-log", ""] }
+          }
+        }
+
+      ]
+    }
+
+  ]
+}
