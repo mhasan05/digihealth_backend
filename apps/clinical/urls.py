@@ -3,9 +3,11 @@ from .views import (
     ManagerDashboardView,
     AppointmentListView, AppointmentDetailView,
     AppointmentConfirmView, AppointmentCancelView, AppointmentAdmitView,
-    AdmissionListView, AvailableBedsView, AvailableNursesView,
+    AdmissionListView, AdmissionDetailView,
+    AvailableBedsView, AvailableNursesView,
     LabOrderListView, LabOrderAssignView, LabOrderCancelView, LabOrderResultView,
-    ManagerDoctorsView, ManagerPatientsView, WalkInPatientView,
+    ManagerDoctorsView, ManagerPathologistsView, ManagerLabTestsView,
+    ManagerPatientsView, ManagerPatientDetailView, WalkInPatientView,
 )
 
 urlpatterns = [
@@ -16,6 +18,7 @@ urlpatterns = [
     path('appointments/<uuid:pk>/cancel/', AppointmentCancelView.as_view(), name='manager-appointment-cancel'),
     path('appointments/<uuid:pk>/admit/', AppointmentAdmitView.as_view(), name='manager-appointment-admit'),
     path('admissions/', AdmissionListView.as_view(), name='manager-admission-list'),
+    path('admissions/<uuid:pk>/', AdmissionDetailView.as_view(), name='manager-admission-detail'),
     path('available-beds/', AvailableBedsView.as_view(), name='manager-available-beds'),
     path('available-nurses/', AvailableNursesView.as_view(), name='manager-available-nurses'),
     path('lab-orders/', LabOrderListView.as_view(), name='manager-lab-order-list'),
@@ -23,6 +26,9 @@ urlpatterns = [
     path('lab-orders/<uuid:pk>/cancel/', LabOrderCancelView.as_view(), name='manager-lab-order-cancel'),
     path('lab-orders/<uuid:pk>/result/', LabOrderResultView.as_view(), name='manager-lab-order-result'),
     path('doctors/', ManagerDoctorsView.as_view(), name='manager-doctors'),
+    path('pathologists/', ManagerPathologistsView.as_view(), name='manager-pathologists'),
+    path('lab-tests/', ManagerLabTestsView.as_view(), name='manager-lab-tests'),
     path('patients/', ManagerPatientsView.as_view(), name='manager-patients'),
+    path('patients/<uuid:pk>/', ManagerPatientDetailView.as_view(), name='manager-patient-detail'),
     path('walk-in-patient/', WalkInPatientView.as_view(), name='manager-walk-in-patient'),
 ]

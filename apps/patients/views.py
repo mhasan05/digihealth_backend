@@ -1,5 +1,6 @@
 from rest_framework.views import APIView
 from rest_framework.response import Response
+from rest_framework.permissions import IsAuthenticated
 from rest_framework import status
 
 from core.permissions import IsPatient, IsPathologist
@@ -15,13 +16,32 @@ from .serializers import (
 # ─── Patient endpoints (/api/patient/*) ──────────────────────────────────────
 
 class PatientMeView(APIView):
-    permission_classes = [IsPatient]
+    """The 'user' portal — every authenticated user can view themselves as a patient.
+
+    Multi-role users (manager / pathologist / owner / admin) can switch to the user
+    portal without already having the 'patient' role. We grant the role and
+    auto-create a Patient row on first hit so subsequent /api/patient/* calls work.
+    """
+    permission_classes = [IsAuthenticated]
 
     def get(self, request):
-        try:
-            patient = Patient.objects.select_related('user').get(user=request.user)
-        except Patient.DoesNotExist:
-            return Response({'detail': 'Patient profile not found.'}, status=status.HTTP_404_NOT_FOUND)
+        user = request.user
+        # Promote to patient on first visit so later patient-only endpoints pass IsPatient
+        roles = list(user.roles or [])
+        if 'patient' not in roles:
+            user.roles = roles + ['patient']
+            user.save(update_fields=['roles'])
+
+        patient = Patient.objects.select_related('user').filter(user=user).first()
+        if not patient:
+            patient = Patient.objects.create(
+                user=user,
+                age=0,
+                gender='Other',
+                blood_group='Unknown',
+                address='',
+                subscription_tier='Free',
+            )
         return Response(PatientSerializer(patient).data)
 
 

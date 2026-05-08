@@ -323,6 +323,9 @@ class Command(BaseCommand):
         )
         self.stdout.write(f'  Multi-role user: {multi_user.phone} ({"created" if created else "exists"})')
 
+        # Multi-role user also gets demo metrics/reports so patient dashboard is populated
+        patients.append(multi_patient)
+
         # ── Health Metrics ─────────────────────────────────────────────────────
         metric_types = ['hba1c', 'blood_pressure', 'weight']
         metric_values = {

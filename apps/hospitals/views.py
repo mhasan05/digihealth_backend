@@ -36,6 +36,7 @@ class HospitalListView(APIView):
         return Response(HospitalSerializer(hospitals, many=True).data)
 
     def post(self, request):
+        from core.utils import validate_demographics, ensure_patient_profile
         data = request.data
 
         # Extract owner data
@@ -47,7 +48,21 @@ class HospitalListView(APIView):
         if not owner_name or not owner_phone:
             return Response({'detail': 'owner_name and owner_phone are required.'}, status=status.HTTP_400_BAD_REQUEST)
 
-        hospital_data = {k: v for k, v in data.items() if k not in ['owner_name', 'owner_phone', 'owner_email', 'owner_password']}
+        # Demographics for the owner (age, gender, blood_group, address) — required
+        owner_demo_input = {
+            'age':         data.get('owner_age'),
+            'gender':      data.get('owner_gender'),
+            'blood_group': data.get('owner_blood_group'),
+            'address':     data.get('owner_address'),
+        }
+        owner_demo, err = validate_demographics(owner_demo_input, require=True)
+        if err:
+            return Response({'detail': f'Owner {err}'}, status=status.HTTP_400_BAD_REQUEST)
+
+        hospital_data = {
+            k: v for k, v in data.items()
+            if not k.startswith('owner_')
+        }
 
         serializer = HospitalSerializer(data=hospital_data)
         if not serializer.is_valid():
@@ -72,6 +87,8 @@ class HospitalListView(APIView):
                     health_id=health_id,
                     roles=['owner'],
                 )
+
+            ensure_patient_profile(owner_user, **owner_demo)
 
             Owner.objects.create(
                 user=owner_user,

@@ -42,21 +42,40 @@ class AppointmentSerializer(serializers.ModelSerializer):
 
 class AdmissionSerializer(serializers.ModelSerializer):
     appointment_id = serializers.UUIDField(source='appointment.id', read_only=True)
-    patient_name = serializers.CharField(source='appointment.patient.user.name', read_only=True)
-    bed_id = serializers.SerializerMethodField()
-    bed_number = serializers.SerializerMethodField()
-    ward = serializers.SerializerMethodField()
-    nurse_id = serializers.SerializerMethodField()
-    nurse_name = serializers.SerializerMethodField()
+    patient_id     = serializers.UUIDField(source='appointment.patient.id', read_only=True)
+    patient_name   = serializers.CharField(source='appointment.patient.user.name', read_only=True)
+    patient_phone  = serializers.CharField(source='appointment.patient.user.phone', read_only=True)
+    patient_age    = serializers.IntegerField(source='appointment.patient.age', read_only=True)
+    patient_gender = serializers.CharField(source='appointment.patient.gender', read_only=True)
+    blood_group    = serializers.CharField(source='appointment.patient.blood_group', read_only=True)
+    address        = serializers.CharField(source='appointment.patient.address', read_only=True)
+    reason         = serializers.CharField(source='appointment.reason', read_only=True)
+    doctor_id   = serializers.SerializerMethodField()
+    doctor_name = serializers.SerializerMethodField()
+    bed_id      = serializers.SerializerMethodField()
+    bed_number  = serializers.SerializerMethodField()
+    ward        = serializers.SerializerMethodField()
+    nurse_id    = serializers.SerializerMethodField()
+    nurse_name  = serializers.SerializerMethodField()
 
     class Meta:
         model = Admission
         fields = [
-            'id', 'appointment_id', 'patient_name',
+            'id', 'appointment_id',
+            'patient_id', 'patient_name', 'patient_phone',
+            'patient_age', 'patient_gender', 'blood_group', 'address',
+            'reason',
+            'doctor_id', 'doctor_name',
             'bed_id', 'bed_number', 'ward',
             'nurse_id', 'nurse_name',
             'admitted_at', 'discharged_at', 'bed_price_snapshot',
         ]
+
+    def get_doctor_id(self, obj):
+        return str(obj.appointment.doctor.id) if obj.appointment.doctor else None
+
+    def get_doctor_name(self, obj):
+        return obj.appointment.doctor.name if obj.appointment.doctor else ''
 
     def get_bed_id(self, obj):
         return str(obj.bed.id) if obj.bed else None

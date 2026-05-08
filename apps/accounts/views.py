@@ -8,7 +8,7 @@ from rest_framework_simplejwt.tokens import RefreshToken
 from .models import User, ActivityEvent
 from .serializers import UserSerializer
 from apps.patients.models import Patient
-from core.utils import generate_health_id
+from core.utils import generate_health_id, validate_demographics
 
 
 def get_tokens_for_user(user):
@@ -55,16 +55,16 @@ class RegisterView(APIView):
         phone = request.data.get('phone', '').strip()
         password = request.data.get('password', '')
         name = request.data.get('name', '').strip()
-        age = request.data.get('age')
-        gender = request.data.get('gender', '')
-        blood_group = request.data.get('blood_group', '')
-        address = request.data.get('address', '')
 
         if not phone or not password or not name:
             return Response({'detail': 'Phone, password and name are required.'}, status=status.HTTP_400_BAD_REQUEST)
 
         if User.objects.filter(phone=phone).exists():
             return Response({'detail': 'এই ফোন নম্বরে ইতোমধ্যে একটি অ্যাকাউন্ট আছে।'}, status=status.HTTP_400_BAD_REQUEST)
+
+        demo, err = validate_demographics(request.data, require=True)
+        if err:
+            return Response({'detail': err}, status=status.HTTP_400_BAD_REQUEST)
 
         with transaction.atomic():
             health_id = generate_health_id()
@@ -77,10 +77,10 @@ class RegisterView(APIView):
             )
             Patient.objects.create(
                 user=user,
-                age=age or 0,
-                gender=gender or 'Other',
-                blood_group=blood_group or 'Unknown',
-                address=address or '',
+                age=demo['age'],
+                gender=demo['gender'],
+                blood_group=demo['blood_group'],
+                address=demo['address'],
                 subscription_tier='Free',
             )
             ActivityEvent.objects.create(

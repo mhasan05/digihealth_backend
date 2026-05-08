@@ -1,0 +1,92 @@
+# ── Python bytecode / build ───────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+build/
+dist/
+*.egg-info/
+*.egg
+.eggs/
+develop-eggs/
+parts/
+sdist/
+var/
+wheels/
+*.manifest
+*.spec
+
+# ── Virtual environments ──────────────────────────────────────────────────────
+venv/
+env/
+.venv/
+.env/
+ENV/
+env.bak/
+venv.bak/
+
+# ── Django ────────────────────────────────────────────────────────────────────
+*.sqlite3
+*.sqlite3-journal
+db.sqlite3
+db.sqlite3-shm
+db.sqlite3-wal
+local_settings.py
+media/
+staticfiles/
+static/
+
+# ── Migrations: keep code, ignore generated junk ─────────────────────────────
+# (migration files themselves SHOULD be committed)
+
+# ── Environment / secrets ─────────────────────────────────────────────────────
+.env
+.env.*
+!.env.example
+secrets.json
+
+# ── Logs ──────────────────────────────────────────────────────────────────────
+*.log
+logs/
+
+# ── Testing / coverage ────────────────────────────────────────────────────────
+.coverage
+.coverage.*
+htmlcov/
+.tox/
+.nox/
+.pytest_cache/
+.hypothesis/
+nosetests.xml
+coverage.xml
+*.cover
+*.py,cover
+
+# ── Caches & tooling ──────────────────────────────────────────────────────────
+.mypy_cache/
+.dmypy.json
+.pyre/
+.pytype/
+.ruff_cache/
+.cython_debug/
+pip-log.txt
+pip-delete-this-directory.txt
+celerybeat-schedule
+celerybeat.pid
+
+# ── Jupyter ───────────────────────────────────────────────────────────────────
+.ipynb_checkpoints/
+
+# ── Editor / OS ───────────────────────────────────────────────────────────────
+.vscode/*
+!.vscode/settings.json
+!.vscode/extensions.json
+!.vscode/launch.json
+.idea/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/

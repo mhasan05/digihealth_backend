@@ -4,7 +4,10 @@ from rest_framework.response import Response
 from rest_framework import status
 
 from core.permissions import IsOwner
-from core.utils import get_hospital_for_owner, generate_health_id
+from core.utils import (
+    get_hospital_for_owner, generate_health_id,
+    validate_demographics, ensure_patient_profile,
+)
 from apps.accounts.models import User, ActivityEvent
 from apps.hospitals.models import Owner
 from apps.hospitals.serializers import OwnerSerializer
@@ -106,6 +109,10 @@ class CoOwnerListView(APIView):
         if not name or not phone:
             return Response({'detail': 'name and phone are required.'}, status=status.HTTP_400_BAD_REQUEST)
 
+        demo, err = validate_demographics(request.data, require=True)
+        if err:
+            return Response({'detail': err}, status=status.HTTP_400_BAD_REQUEST)
+
         with transaction.atomic():
             if User.objects.filter(phone=phone).exists():
                 co_owner_user = User.objects.get(phone=phone)
@@ -122,6 +129,8 @@ class CoOwnerListView(APIView):
                     health_id=health_id,
                     roles=['owner'],
                 )
+
+            ensure_patient_profile(co_owner_user, **demo)
 
             new_owner = Owner.objects.create(
                 user=co_owner_user,
@@ -179,6 +188,10 @@ class ManagerListView(APIView):
         if User.objects.filter(phone=phone).exists():
             return Response({'detail': 'A user with this phone already exists.'}, status=status.HTTP_400_BAD_REQUEST)
 
+        demo, err = validate_demographics(request.data, require=True)
+        if err:
+            return Response({'detail': err}, status=status.HTTP_400_BAD_REQUEST)
+
         with transaction.atomic():
             health_id = generate_health_id()
             user = User.objects.create_user(
@@ -189,6 +202,7 @@ class ManagerListView(APIView):
                 health_id=health_id,
                 roles=['manager'],
             )
+            ensure_patient_profile(user, **demo)
             manager = Manager.objects.create(
                 user=user,
                 hospital=owner_profile.hospital,
@@ -223,6 +237,13 @@ class ManagerDetailView(APIView):
         if 'email' in request.data:
             manager.user.email = request.data['email']
             manager.user.save()
+
+        # Demographics — optional on update; only provided fields are saved
+        demo, err = validate_demographics(request.data, require=False)
+        if err:
+            return Response({'detail': err}, status=status.HTTP_400_BAD_REQUEST)
+        if demo:
+            ensure_patient_profile(manager.user, **demo)
 
         return Response(ManagerSerializer(manager).data)
 
@@ -268,6 +289,10 @@ class PathologistListView(APIView):
         if User.objects.filter(phone=phone).exists():
             return Response({'detail': 'A user with this phone already exists.'}, status=status.HTTP_400_BAD_REQUEST)
 
+        demo, err = validate_demographics(request.data, require=True)
+        if err:
+            return Response({'detail': err}, status=status.HTTP_400_BAD_REQUEST)
+
         with transaction.atomic():
             health_id = generate_health_id()
             user = User.objects.create_user(
@@ -278,6 +303,7 @@ class PathologistListView(APIView):
                 health_id=health_id,
                 roles=['pathologist'],
             )
+            ensure_patient_profile(user, **demo)
             pathologist = Pathologist.objects.create(
                 user=user,
                 hospital=owner_profile.hospital,
@@ -312,6 +338,12 @@ class PathologistDetailView(APIView):
         if 'email' in request.data:
             pathologist.user.email = request.data['email']
             pathologist.user.save()
+
+        demo, err = validate_demographics(request.data, require=False)
+        if err:
+            return Response({'detail': err}, status=status.HTTP_400_BAD_REQUEST)
+        if demo:
+            ensure_patient_profile(pathologist.user, **demo)
 
         return Response(PathologistSerializer(pathologist).data)
 
