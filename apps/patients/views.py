@@ -24,14 +24,11 @@ class PatientMeView(APIView):
     """
     permission_classes = [IsAuthenticated]
 
-    def get(self, request):
-        user = request.user
-        # Promote to patient on first visit so later patient-only endpoints pass IsPatient
+    def _ensure_patient(self, user):
         roles = list(user.roles or [])
         if 'patient' not in roles:
             user.roles = roles + ['patient']
             user.save(update_fields=['roles'])
-
         patient = Patient.objects.select_related('user').filter(user=user).first()
         if not patient:
             patient = Patient.objects.create(
@@ -42,6 +39,48 @@ class PatientMeView(APIView):
                 address='',
                 subscription_tier='Free',
             )
+        return patient
+
+    def get(self, request):
+        patient = self._ensure_patient(request.user)
+        return Response(PatientSerializer(patient).data)
+
+    def put(self, request):
+        """Self-edit: every authenticated user can update their own profile."""
+        from core.utils import validate_demographics
+        from django.db import transaction
+
+        patient = self._ensure_patient(request.user)
+        user = patient.user
+
+        demo, err = validate_demographics(request.data, require=False)
+        if err:
+            return Response({'detail': err}, status=status.HTTP_400_BAD_REQUEST)
+
+        with transaction.atomic():
+            if 'name' in request.data:
+                name = (request.data.get('name') or '').strip()
+                if name:
+                    user.name = name
+                    user.save(update_fields=['name'])
+            if 'email' in request.data:
+                user.email = (request.data.get('email') or '').strip() or None
+                user.save(update_fields=['email'])
+
+            # Demographics — partial update
+            if demo:
+                for k, v in demo.items():
+                    setattr(patient, k, v)
+                patient.save()
+            # Address may be set to empty (allowed since we're updating self)
+            if 'address' in request.data and 'address' not in demo:
+                patient.address = (request.data.get('address') or '').strip()
+                patient.save(update_fields=['address'])
+            # Blood group can be cleared by sending empty string
+            if 'blood_group' in request.data and 'blood_group' not in demo:
+                patient.blood_group = 'Unknown'
+                patient.save(update_fields=['blood_group'])
+
         return Response(PatientSerializer(patient).data)
 
 
