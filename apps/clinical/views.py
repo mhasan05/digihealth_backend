@@ -1,4 +1,5 @@
 from django.db import transaction
+from django.db.models import Count, Q
 from django.utils import timezone
 from rest_framework.views import APIView
 from rest_framework.response import Response
@@ -9,8 +10,8 @@ from core.utils import get_manager_profile, generate_health_id
 from apps.accounts.models import User, ActivityEvent
 from apps.patients.models import Patient
 from apps.patients.serializers import PatientSerializer
-from apps.staff.models import Doctor, Nurse, Pathologist
-from apps.staff.serializers import DoctorSerializer, NurseSerializer
+from apps.staff.models import Doctor, HospitalDoctor, Nurse, Pathologist
+from apps.staff.serializers import DoctorSerializer, HospitalDoctorPickSerializer, NurseSerializer
 from .models import Bed, LabTest, Appointment, Admission, LabOrder, LabResult
 from .serializers import (
     BedSerializer, AppointmentSerializer, AdmissionSerializer,
@@ -73,7 +74,7 @@ class AppointmentListView(APIView):
         doctor = None
         if doctor_id:
             try:
-                doctor = Doctor.objects.get(pk=doctor_id, hospital=mgr.hospital)
+                doctor = Doctor.objects.get(pk=doctor_id, hospital_attachments__hospital=mgr.hospital)
             except Doctor.DoesNotExist:
                 return Response({'detail': 'Doctor not found.'}, status=status.HTTP_404_NOT_FOUND)
 
@@ -110,7 +111,7 @@ class AppointmentDetailView(APIView):
             doctor_id = request.data.get('doctor_id') or None
             if doctor_id:
                 try:
-                    apt.doctor = Doctor.objects.get(pk=doctor_id, hospital=mgr.hospital)
+                    apt.doctor = Doctor.objects.get(pk=doctor_id, hospital_attachments__hospital=mgr.hospital)
                 except Doctor.DoesNotExist:
                     return Response({'detail': 'Doctor not found.'}, status=status.HTTP_404_NOT_FOUND)
             else:
@@ -254,7 +255,7 @@ class AdmissionListView(APIView):
         doctor = None
         if doctor_id:
             try:
-                doctor = Doctor.objects.get(pk=doctor_id, hospital=mgr.hospital)
+                doctor = Doctor.objects.get(pk=doctor_id, hospital_attachments__hospital=mgr.hospital)
             except Doctor.DoesNotExist:
                 return Response({'detail': 'Doctor not found.'}, status=status.HTTP_404_NOT_FOUND)
 
@@ -395,7 +396,7 @@ class AdmissionDetailView(APIView):
             if doctor_provided:
                 if new_doctor_id:
                     try:
-                        apt.doctor = Doctor.objects.get(pk=new_doctor_id, hospital=mgr.hospital)
+                        apt.doctor = Doctor.objects.get(pk=new_doctor_id, hospital_attachments__hospital=mgr.hospital)
                     except Doctor.DoesNotExist:
                         return Response({'detail': 'Doctor not found.'}, status=status.HTTP_400_BAD_REQUEST)
                 else:
@@ -448,15 +449,17 @@ class AvailableNursesView(APIView):
         mgr = get_manager_profile(request.user)
         if not mgr:
             return Response({'detail': 'Manager profile not found.'}, status=status.HTTP_404_NOT_FOUND)
-        # Exclude nurses currently assigned to a non-discharged admission
-        busy_nurse_ids = Admission.objects.filter(
-            appointment__hospital=mgr.hospital,
-            discharged_at__isnull=True,
-            nurse__isnull=False,
-        ).values_list('nurse_id', flat=True)
-        nurses = Nurse.objects.filter(
-            hospital=mgr.hospital, status='Active'
-        ).exclude(id__in=busy_nurse_ids)
+        # Return every active nurse and annotate her current active-admission load
+        # so managers can see workload while still being free to assign multiple patients.
+        nurses = (
+            Nurse.objects.filter(hospital=mgr.hospital, status='Active')
+            .annotate(
+                active_admission_count=Count(
+                    'admissions',
+                    filter=Q(admissions__discharged_at__isnull=True),
+                )
+            )
+        )
         return Response(NurseSerializer(nurses, many=True).data)
 
 
@@ -496,7 +499,7 @@ class LabOrderListView(APIView):
         doctor = None
         if doctor_id:
             try:
-                doctor = Doctor.objects.get(pk=doctor_id, hospital=mgr.hospital)
+                doctor = Doctor.objects.get(pk=doctor_id, hospital_attachments__hospital=mgr.hospital)
             except Doctor.DoesNotExist:
                 pass
 
@@ -583,8 +586,16 @@ class ManagerDoctorsView(APIView):
         mgr = get_manager_profile(request.user)
         if not mgr:
             return Response({'detail': 'Manager profile not found.'}, status=status.HTTP_404_NOT_FOUND)
-        doctors = Doctor.objects.filter(hospital=mgr.hospital, status='Active')
-        return Response(DoctorSerializer(doctors, many=True).data)
+        attachments = (
+            HospitalDoctor.objects
+            .filter(
+                hospital=mgr.hospital,
+                status='Active',
+                doctor__availability_status='Available',
+            )
+            .select_related('doctor', 'hospital')
+        )
+        return Response(HospitalDoctorPickSerializer(attachments, many=True).data)
 
 
 class ManagerLabTestsView(APIView):
@@ -626,11 +637,25 @@ class ManagerPathologistsView(APIView):
 
 
 class ManagerPatientsView(APIView):
+    """Patient lookup for the manager portal.
+
+    The frontend currently fetches everything and filters client-side, so we
+    cap the response at 500 rows for now and support optional ?q= server-side
+    filtering. TODO: move to a search-only endpoint with proper pagination once
+    the manager UI is reworked.
+    """
     permission_classes = [IsManager]
 
     def get(self, request):
-        patients = Patient.objects.select_related('user').all()
-        return Response(PatientSerializer(patients, many=True).data)
+        q = (request.query_params.get('q') or '').strip()
+        qs = Patient.objects.select_related('user').order_by('-created_at')
+        if q:
+            qs = qs.filter(
+                Q(user__name__icontains=q)
+                | Q(user__phone__icontains=q)
+                | Q(user__health_id__icontains=q)
+            )
+        return Response(PatientSerializer(qs[:500], many=True).data)
 
 
 class ManagerPatientDetailView(APIView):

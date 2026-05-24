@@ -1,9 +1,12 @@
 from rest_framework.views import APIView
 from rest_framework.response import Response
-from rest_framework.permissions import IsAuthenticated
+from rest_framework.permissions import IsAuthenticated, AllowAny
+from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 from rest_framework import status
+from django.http import FileResponse, Http404
 
 from core.permissions import IsPatient, IsPathologist
+from core.file_tokens import read_report_file_token
 from apps.clinical.models import LabOrder, LabResult
 from apps.clinical.serializers import LabOrderSerializer, LabResultSerializer
 from .models import Patient, HealthMetric, MedicalReport, ReportAccessLog
@@ -80,6 +83,31 @@ class PatientMeView(APIView):
             if 'blood_group' in request.data and 'blood_group' not in demo:
                 patient.blood_group = 'Unknown'
                 patient.save(update_fields=['blood_group'])
+            # Privacy toggle — accepts true/false/1/0/"true"/"false".
+            if 'is_private' in request.data:
+                raw = request.data.get('is_private')
+                if isinstance(raw, str):
+                    raw = raw.strip().lower() in ('true', '1', 'yes', 'on')
+                patient.is_private = bool(raw)
+                patient.save(update_fields=['is_private'])
+            # Self-reported chronic conditions — must be a list of allowed slugs.
+            if 'conditions' in request.data:
+                raw_list = request.data.get('conditions') or []
+                if not isinstance(raw_list, list):
+                    return Response(
+                        {'detail': 'conditions must be a list.'},
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
+                allowed = set(Patient.CONDITION_CHOICES)
+                cleaned = []
+                seen = set()
+                for item in raw_list:
+                    slug = str(item).strip().lower()
+                    if slug in allowed and slug not in seen:
+                        cleaned.append(slug)
+                        seen.add(slug)
+                patient.conditions = cleaned
+                patient.save(update_fields=['conditions'])
 
         return Response(PatientSerializer(patient).data)
 
@@ -144,6 +172,7 @@ class HealthMetricDetailView(APIView):
 
 class MedicalReportListView(APIView):
     permission_classes = [IsPatient]
+    parser_classes = [MultiPartParser, FormParser, JSONParser]
 
     def get(self, request):
         try:
@@ -151,7 +180,7 @@ class MedicalReportListView(APIView):
         except Patient.DoesNotExist:
             return Response({'detail': 'Patient profile not found.'}, status=status.HTTP_404_NOT_FOUND)
         reports = MedicalReport.objects.filter(patient=patient)
-        return Response(MedicalReportSerializer(reports, many=True).data)
+        return Response(MedicalReportSerializer(reports, many=True, context={'request': request}).data)
 
     def post(self, request):
         try:
@@ -159,19 +188,27 @@ class MedicalReportListView(APIView):
         except Patient.DoesNotExist:
             return Response({'detail': 'Patient profile not found.'}, status=status.HTTP_404_NOT_FOUND)
 
-        # Enforce 10 report limit
+        uploaded = request.FILES.get('file')
+        if not uploaded:
+            return Response({'detail': 'No file uploaded.'}, status=status.HTTP_400_BAD_REQUEST)
+        if uploaded.size > 10 * 1024 * 1024:
+            return Response({'detail': 'File too large (max 10 MB).'}, status=status.HTTP_400_BAD_REQUEST)
+
+        # Enforce 10-report FIFO limit
         existing = MedicalReport.objects.filter(patient=patient).order_by('uploaded_at')
         if existing.count() >= 10:
-            oldest = existing.first()
-            oldest.delete()
+            existing.first().delete()
 
         report = MedicalReport.objects.create(
             patient=patient,
-            name=request.data.get('name', ''),
-            file_url=request.data.get('file_url', ''),
-            size=request.data.get('size', 0),
+            name=request.data.get('name') or uploaded.name,
+            file=uploaded,
+            size=uploaded.size,
         )
-        return Response(MedicalReportSerializer(report).data, status=status.HTTP_201_CREATED)
+        return Response(
+            MedicalReportSerializer(report, context={'request': request}).data,
+            status=status.HTTP_201_CREATED,
+        )
 
 
 class MedicalReportDetailView(APIView):
@@ -188,6 +225,29 @@ class MedicalReportDetailView(APIView):
             return Response({'detail': 'Report not found.'}, status=status.HTTP_404_NOT_FOUND)
         report.delete()
         return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+class ReportFileView(APIView):
+    """Serve a report file via a short-lived signed token. The token itself is
+    the authorization — only people who got it via an auth-gated endpoint can
+    use it. Direct /media/ paths are not exposed."""
+    permission_classes = [AllowAny]
+    authentication_classes = []
+
+    def get(self, request):
+        token = request.query_params.get('t') or ''
+        report_id = read_report_file_token(token)
+        if not report_id:
+            raise Http404('Invalid or expired download link.')
+        try:
+            report = MedicalReport.objects.get(pk=report_id)
+        except (MedicalReport.DoesNotExist, ValueError):
+            raise Http404('Report not found.')
+        if not report.file:
+            raise Http404('No file attached.')
+        # Inline (as_attachment=False) so images and PDFs preview in the browser;
+        # `<a download>` on the client still triggers a download via the filename hint.
+        return FileResponse(report.file.open('rb'), as_attachment=False, filename=report.name)
 
 
 class PrivacyLogView(APIView):

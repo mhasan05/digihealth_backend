@@ -3,7 +3,9 @@ from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
 
-from core.permissions import IsOwner
+from core.permissions import IsOwner, IsAdmin, IsDoctor
+from django.db.models import Count
+from rest_framework.permissions import IsAuthenticated
 from core.utils import (
     get_hospital_for_owner, generate_health_id,
     validate_demographics, ensure_patient_profile,
@@ -14,8 +16,12 @@ from apps.hospitals.serializers import OwnerSerializer
 from apps.clinical.models import Bed, LabTest
 from apps.clinical.serializers import BedSerializer, LabTestSerializer
 from apps.finance.models import MonthlyFinancial
-from .models import Manager, Pathologist, Doctor, Nurse
-from .serializers import ManagerSerializer, PathologistSerializer, DoctorSerializer, NurseSerializer
+from django.db.models import Q
+from .models import Manager, Pathologist, Doctor, HospitalDoctor, Nurse
+from .serializers import (
+    ManagerSerializer, PathologistSerializer, DoctorSerializer,
+    HospitalDoctorSerializer, NurseSerializer,
+)
 
 
 class OwnerDashboardView(APIView):
@@ -69,7 +75,7 @@ class OwnerDashboardView(APIView):
         data = {
             'managers_count': Manager.objects.filter(hospital=hospital).count(),
             'pathologists_count': Pathologist.objects.filter(hospital=hospital).count(),
-            'doctors_count': Doctor.objects.filter(hospital=hospital).count(),
+            'doctors_count': HospitalDoctor.objects.filter(hospital=hospital).count(),
             'nurses_count': Nurse.objects.filter(hospital=hospital).count(),
             'beds_available': beds_available,
             'beds_total': beds_total,
@@ -359,44 +365,62 @@ class PathologistDetailView(APIView):
         return Response(status=status.HTTP_204_NO_CONTENT)
 
 
-# ─── Doctors ──────────────────────────────────────────────────────────────────
+# ─── Doctors (owner attaches from system-wide registry) ───────────────────────
 
 class DoctorListView(APIView):
+    """List doctors attached to the owner's hospital, or attach one from the registry."""
     permission_classes = [IsOwner]
 
     def get(self, request):
         owner_profile = get_hospital_for_owner(request.user)
         if not owner_profile:
             return Response({'detail': 'Owner profile not found.'}, status=status.HTTP_404_NOT_FOUND)
-        doctors = Doctor.objects.filter(hospital=owner_profile.hospital)
-        return Response(DoctorSerializer(doctors, many=True).data)
+        attachments = HospitalDoctor.objects.filter(
+            hospital=owner_profile.hospital,
+        ).select_related('doctor', 'hospital')
+        return Response(HospitalDoctorSerializer(attachments, many=True).data)
 
     def post(self, request):
         owner_profile = get_hospital_for_owner(request.user)
         if not owner_profile:
             return Response({'detail': 'Owner profile not found.'}, status=status.HTTP_404_NOT_FOUND)
 
-        name = request.data.get('name', '').strip()
-        specialization = request.data.get('specialization', '')
-        phone = request.data.get('phone', '').strip()
-        schedule = request.data.get('schedule', '')
-        status_val = request.data.get('status', 'Active')
+        doctor_id = request.data.get('doctor_id')
+        if not doctor_id:
+            return Response({'detail': 'doctor_id is required.'}, status=status.HTTP_400_BAD_REQUEST)
 
-        if not name or not phone:
-            return Response({'detail': 'name and phone are required.'}, status=status.HTTP_400_BAD_REQUEST)
+        try:
+            doctor = Doctor.objects.get(pk=doctor_id)
+        except Doctor.DoesNotExist:
+            return Response(
+                {'detail': 'এই ডাক্তার সিস্টেম রেজিস্ট্রিতে নেই। প্রথমে অ্যাডমিনকে যোগ করতে বলুন।'},
+                status=status.HTTP_404_NOT_FOUND,
+            )
 
-        doctor = Doctor.objects.create(
+        if doctor.availability_status == 'Unavailable':
+            return Response(
+                {'detail': 'এই ডাক্তার বর্তমানে অ্যাডমিন কর্তৃক অপ্রাপ্য চিহ্নিত। যুক্ত করা যাবে না।'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        if HospitalDoctor.objects.filter(hospital=owner_profile.hospital, doctor=doctor).exists():
+            return Response(
+                {'detail': 'এই ডাক্তার ইতোমধ্যে আপনার হাসপাতালে যুক্ত আছে।'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        attachment = HospitalDoctor.objects.create(
             hospital=owner_profile.hospital,
-            name=name,
-            specialization=specialization,
-            phone=phone,
-            schedule=schedule,
-            status=status_val,
+            doctor=doctor,
+            schedule=request.data.get('schedule', ''),
+            status=request.data.get('status', 'Active'),
         )
-        return Response(DoctorSerializer(doctor).data, status=status.HTTP_201_CREATED)
+        return Response(HospitalDoctorSerializer(attachment).data, status=status.HTTP_201_CREATED)
 
 
 class DoctorDetailView(APIView):
+    """Owner edits per-hospital fields (schedule + status only) or detaches.
+    Activation is blocked while the global availability is Unavailable."""
     permission_classes = [IsOwner]
 
     def put(self, request, pk):
@@ -404,26 +428,70 @@ class DoctorDetailView(APIView):
         if not owner_profile:
             return Response({'detail': 'Owner profile not found.'}, status=status.HTTP_404_NOT_FOUND)
         try:
-            doctor = Doctor.objects.get(pk=pk, hospital=owner_profile.hospital)
-        except Doctor.DoesNotExist:
+            attachment = HospitalDoctor.objects.select_related('doctor').get(
+                pk=pk, hospital=owner_profile.hospital,
+            )
+        except HospitalDoctor.DoesNotExist:
             return Response({'detail': 'Doctor not found.'}, status=status.HTTP_404_NOT_FOUND)
 
-        for field in ['name', 'specialization', 'phone', 'schedule', 'status']:
-            if field in request.data:
-                setattr(doctor, field, request.data[field])
-        doctor.save()
-        return Response(DoctorSerializer(doctor).data)
+        unavailable = attachment.doctor.availability_status == 'Unavailable'
+
+        if 'schedule' in request.data:
+            attachment.schedule = request.data.get('schedule') or ''
+        if 'status' in request.data:
+            new_status = request.data.get('status')
+            if new_status not in ('Active', 'Inactive'):
+                return Response(
+                    {'detail': "status must be 'Active' or 'Inactive'."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            if unavailable and new_status == 'Active':
+                return Response(
+                    {'detail': 'এই ডাক্তার অ্যাডমিন কর্তৃক অপ্রাপ্য — সক্রিয় করা যাবে না।'},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            attachment.status = new_status
+
+        attachment.save()
+        return Response(HospitalDoctorSerializer(attachment).data)
 
     def delete(self, request, pk):
         owner_profile = get_hospital_for_owner(request.user)
         if not owner_profile:
             return Response({'detail': 'Owner profile not found.'}, status=status.HTTP_404_NOT_FOUND)
         try:
-            doctor = Doctor.objects.get(pk=pk, hospital=owner_profile.hospital)
-        except Doctor.DoesNotExist:
+            attachment = HospitalDoctor.objects.get(pk=pk, hospital=owner_profile.hospital)
+        except HospitalDoctor.DoesNotExist:
             return Response({'detail': 'Doctor not found.'}, status=status.HTTP_404_NOT_FOUND)
-        doctor.delete()
+        # Detach only — the doctor stays in the registry.
+        attachment.delete()
         return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+class DoctorRegistrySearchView(APIView):
+    """Search the system-wide registry for AVAILABLE doctors not yet attached to this hospital."""
+    permission_classes = [IsOwner]
+
+    def get(self, request):
+        owner_profile = get_hospital_for_owner(request.user)
+        if not owner_profile:
+            return Response({'detail': 'Owner profile not found.'}, status=status.HTTP_404_NOT_FOUND)
+
+        q = (request.query_params.get('q') or '').strip()
+        if not q:
+            return Response([])
+
+        already_attached = HospitalDoctor.objects.filter(
+            hospital=owner_profile.hospital,
+        ).values_list('doctor_id', flat=True)
+
+        results = (
+            Doctor.objects.filter(availability_status='Available')
+            .exclude(id__in=already_attached)
+            .filter(Q(name__icontains=q) | Q(phone__icontains=q) | Q(bmdc_registration_no__icontains=q))
+            .order_by('name')[:20]
+        )
+        return Response(DoctorSerializer(results, many=True).data)
 
 
 # ─── Nurses ───────────────────────────────────────────────────────────────────
@@ -607,3 +675,316 @@ class LabTestDetailView(APIView):
             return Response({'detail': 'Lab test not found.'}, status=status.HTTP_404_NOT_FOUND)
         test.delete()
         return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+# ─── Admin: system-wide doctor registry ───────────────────────────────────────
+
+class AdminDoctorListView(APIView):
+    permission_classes = [IsAdmin]
+
+    def get(self, request):
+        q = (request.query_params.get('q') or '').strip()
+        qs = Doctor.objects.annotate(attached_hospital_count=Count('hospital_attachments'))
+        if q:
+            qs = qs.filter(
+                Q(name__icontains=q) | Q(phone__icontains=q) | Q(bmdc_registration_no__icontains=q)
+            )
+        return Response(DoctorSerializer(qs.order_by('name'), many=True).data)
+
+    def post(self, request):
+        from django.db import transaction
+        from core.utils import generate_health_id
+
+        name = (request.data.get('name') or '').strip()
+        phone = (request.data.get('phone') or '').strip()
+        bmdc = (request.data.get('bmdc_registration_no') or '').strip() or None
+        specialization = (request.data.get('specialization') or '').strip()
+
+        if not name or not phone:
+            return Response({'detail': 'name and phone are required.'}, status=status.HTTP_400_BAD_REQUEST)
+        if bmdc and Doctor.objects.filter(bmdc_registration_no=bmdc).exists():
+            return Response(
+                {'detail': 'এই BMDC রেজিস্ট্রেশন নম্বর ইতোমধ্যে আছে।'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # Create or reuse a User for the doctor's login. Default password '1234'
+        # only applies to brand-new accounts — existing users keep their password.
+        with transaction.atomic():
+            user = User.objects.filter(phone=phone).first()
+            if user is None:
+                user = User.objects.create_user(
+                    phone=phone,
+                    password='1234',
+                    name=name,
+                    health_id=generate_health_id(),
+                    roles=['doctor'],
+                )
+            else:
+                if 'doctor' not in (user.roles or []):
+                    user.roles = list(user.roles or []) + ['doctor']
+                    user.save(update_fields=['roles'])
+                if Doctor.objects.filter(user=user).exists():
+                    return Response(
+                        {'detail': 'এই ফোনে ইতোমধ্যে একটি ডাক্তার প্রোফাইল আছে।'},
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
+
+            doctor = Doctor.objects.create(
+                user=user,
+                name=name,
+                phone=phone,
+                bmdc_registration_no=bmdc,
+                specialization=specialization,
+            )
+        return Response(DoctorSerializer(doctor).data, status=status.HTTP_201_CREATED)
+
+
+class AdminDoctorDetailView(APIView):
+    permission_classes = [IsAdmin]
+
+    def put(self, request, pk):
+        try:
+            doctor = Doctor.objects.get(pk=pk)
+        except Doctor.DoesNotExist:
+            return Response({'detail': 'Doctor not found.'}, status=status.HTTP_404_NOT_FOUND)
+
+        if 'name' in request.data:
+            doctor.name = (request.data.get('name') or '').strip() or doctor.name
+        if 'phone' in request.data:
+            doctor.phone = (request.data.get('phone') or '').strip() or doctor.phone
+        if 'bmdc_registration_no' in request.data:
+            new_bmdc = (request.data.get('bmdc_registration_no') or '').strip() or None
+            if new_bmdc and Doctor.objects.exclude(pk=doctor.pk).filter(bmdc_registration_no=new_bmdc).exists():
+                return Response(
+                    {'detail': 'এই BMDC রেজিস্ট্রেশন নম্বর অন্য ডাক্তারের সাথে যুক্ত।'},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            doctor.bmdc_registration_no = new_bmdc
+        if 'specialization' in request.data:
+            doctor.specialization = (request.data.get('specialization') or '').strip()
+        doctor.save()
+        return Response(DoctorSerializer(doctor).data)
+
+    def delete(self, request, pk):
+        try:
+            doctor = Doctor.objects.get(pk=pk)
+        except Doctor.DoesNotExist:
+            return Response({'detail': 'Doctor not found.'}, status=status.HTTP_404_NOT_FOUND)
+        # Deletes the registry entry AND cascades all HospitalDoctor attachments.
+        doctor.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+class AdminDoctorAvailabilityView(APIView):
+    """Toggle the global availability flag. Marking a doctor Unavailable also
+    forces every existing hospital attachment to Inactive in one shot — that way
+    owners and managers see a consistent state immediately."""
+    permission_classes = [IsAdmin]
+
+    def post(self, request, pk):
+        try:
+            doctor = Doctor.objects.get(pk=pk)
+        except Doctor.DoesNotExist:
+            return Response({'detail': 'Doctor not found.'}, status=status.HTTP_404_NOT_FOUND)
+
+        new_status = (request.data.get('availability_status') or '').strip()
+        if new_status not in ('Available', 'Unavailable'):
+            return Response(
+                {'detail': "availability_status must be 'Available' or 'Unavailable'."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        doctor.availability_status = new_status
+        doctor.save(update_fields=['availability_status'])
+
+        if new_status == 'Unavailable':
+            HospitalDoctor.objects.filter(doctor=doctor, status='Active').update(status='Inactive')
+
+        return Response(DoctorSerializer(doctor).data)
+
+
+# ─── Doctor portal endpoints (/api/doctor/*) ──────────────────────────────────
+
+class DoctorMeView(APIView):
+    """Logged-in doctor's own profile + the hospitals they're attached to."""
+    permission_classes = [IsDoctor]
+
+    def get(self, request):
+        doctor = Doctor.objects.filter(user=request.user).first()
+        if not doctor:
+            return Response({'detail': 'Doctor profile not found.'}, status=status.HTTP_404_NOT_FOUND)
+        data = DoctorSerializer(doctor).data
+        data['hospitals'] = [
+            {
+                'id': str(att.hospital.id),
+                'name': att.hospital.name_bn or att.hospital.name_en,
+                'schedule': att.schedule,
+                'status': att.status,
+            }
+            for att in HospitalDoctor.objects.filter(doctor=doctor).select_related('hospital')
+        ]
+        return Response(data)
+
+
+class DoctorPatientSearchView(APIView):
+    """System-wide patient search by phone, name or health_id.
+    Patients with `is_private=True` are excluded so doctors can't find them.
+    """
+    permission_classes = [IsDoctor]
+
+    def get(self, request):
+        from apps.patients.models import Patient
+        from apps.patients.serializers import PatientSerializer
+
+        q = (request.query_params.get('q') or '').strip()
+        if not q:
+            return Response([])
+
+        patients = (
+            Patient.objects.select_related('user')
+            .filter(is_private=False)
+            .filter(
+                Q(user__name__icontains=q)
+                | Q(user__phone__icontains=q)
+                | Q(user__health_id__icontains=q)
+            )
+            .order_by('user__name')[:30]
+        )
+        return Response(PatientSerializer(patients, many=True).data)
+
+
+class DoctorPatientDetailView(APIView):
+    """Full patient profile incl. HIV status. Private patients return 404."""
+    permission_classes = [IsDoctor]
+
+    def get(self, request, pk):
+        from apps.patients.models import Patient
+        from apps.patients.serializers import PatientSerializer
+        try:
+            patient = Patient.objects.select_related('user').get(pk=pk, is_private=False)
+        except Patient.DoesNotExist:
+            return Response({'detail': 'Patient not found.'}, status=status.HTTP_404_NOT_FOUND)
+        return Response(PatientSerializer(patient).data)
+
+
+class DoctorPatientHivStatusView(APIView):
+    """Doctor toggles a patient's HIV status (Negative ↔ Positive)."""
+    permission_classes = [IsDoctor]
+
+    def post(self, request, pk):
+        from apps.patients.models import Patient
+        from apps.patients.serializers import PatientSerializer
+
+        try:
+            patient = Patient.objects.get(pk=pk, is_private=False)
+        except Patient.DoesNotExist:
+            return Response({'detail': 'Patient not found.'}, status=status.HTTP_404_NOT_FOUND)
+
+        new_status = (request.data.get('hiv_status') or '').strip()
+        if new_status not in ('Negative', 'Positive'):
+            return Response(
+                {'detail': "hiv_status must be 'Negative' or 'Positive'."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        patient.hiv_status = new_status
+        patient.save(update_fields=['hiv_status'])
+        return Response(PatientSerializer(patient).data)
+
+
+class DoctorPatientReportsView(APIView):
+    """List a patient's medical reports for the doctor to view/download.
+    Private patients return 404 so reports stay hidden.
+    """
+    permission_classes = [IsDoctor]
+
+    def get(self, request, pk):
+        from apps.patients.models import Patient, MedicalReport
+        from apps.patients.serializers import MedicalReportSerializer
+        try:
+            patient = Patient.objects.get(pk=pk, is_private=False)
+        except Patient.DoesNotExist:
+            return Response({'detail': 'Patient not found.'}, status=status.HTTP_404_NOT_FOUND)
+        reports = MedicalReport.objects.filter(patient=patient)
+        return Response(
+            MedicalReportSerializer(reports, many=True, context={'request': request}).data,
+        )
+
+
+class DoctorPatientAccessLogView(APIView):
+    """Record a privacy-log entry against a patient.
+
+    Body: { "action": "searched" | "viewed" | "downloaded", "report_id"?: uuid }
+    - 'searched' is a patient-level lookup; report_id is ignored.
+    - 'viewed' / 'downloaded' require report_id and the report must belong to the patient.
+    """
+    permission_classes = [IsDoctor]
+
+    def post(self, request, pk):
+        from apps.patients.models import Patient, MedicalReport, ReportAccessLog
+
+        try:
+            patient = Patient.objects.get(pk=pk, is_private=False)
+        except Patient.DoesNotExist:
+            return Response({'detail': 'Patient not found.'}, status=status.HTTP_404_NOT_FOUND)
+
+        action = (request.data.get('action') or '').strip()
+        if action not in ('searched', 'viewed', 'downloaded'):
+            return Response(
+                {'detail': "action must be 'searched', 'viewed' or 'downloaded'."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        report = None
+        if action in ('viewed', 'downloaded'):
+            report_id = request.data.get('report_id')
+            if not report_id:
+                return Response(
+                    {'detail': 'report_id is required for viewed/downloaded.'},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            try:
+                report = MedicalReport.objects.get(pk=report_id, patient=patient)
+            except MedicalReport.DoesNotExist:
+                return Response({'detail': 'Report not found for this patient.'}, status=status.HTTP_404_NOT_FOUND)
+
+        ReportAccessLog.objects.create(
+            patient=patient,
+            report=report,
+            accessor=request.user,
+            accessor_role='doctor',
+            action=action,
+        )
+        return Response({'detail': 'logged'}, status=status.HTTP_201_CREATED)
+
+
+# ─── Generic: change own password ─────────────────────────────────────────────
+
+class ChangePasswordView(APIView):
+    """Any authenticated user can change their own password."""
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        current = (request.data.get('current_password') or '')
+        new = (request.data.get('new_password') or '')
+
+        if not current or not new:
+            return Response(
+                {'detail': 'current_password and new_password are required.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if len(new) < 4:
+            return Response(
+                {'detail': 'নতুন পাসওয়ার্ড কমপক্ষে ৪ অক্ষরের হতে হবে।'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if not request.user.check_password(current):
+            return Response(
+                {'detail': 'বর্তমান পাসওয়ার্ড সঠিক নয়।'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        request.user.set_password(new)
+        request.user.save(update_fields=['password'])
+        return Response({'detail': 'পাসওয়ার্ড পরিবর্তন সফল হয়েছে।'})

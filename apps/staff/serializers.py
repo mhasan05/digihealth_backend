@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import Manager, Pathologist, Doctor, Nurse
+from .models import Manager, Pathologist, Doctor, HospitalDoctor, Nurse
 
 
 def _patient_field(obj, field, default=None):
@@ -55,16 +55,62 @@ class PathologistSerializer(serializers.ModelSerializer):
 
 
 class DoctorSerializer(serializers.ModelSerializer):
-    hospital_id = serializers.UUIDField(source='hospital.id', read_only=True)
+    """System-wide registry doctor. Used by the admin portal."""
+
+    attached_hospital_count = serializers.IntegerField(read_only=True, default=0)
 
     class Meta:
         model = Doctor
-        fields = ['id', 'hospital_id', 'name', 'specialization', 'phone', 'schedule', 'status', 'created_at']
+        fields = [
+            'id', 'name', 'phone', 'bmdc_registration_no', 'specialization',
+            'availability_status', 'created_at', 'attached_hospital_count',
+        ]
+
+
+class HospitalDoctorSerializer(serializers.ModelSerializer):
+    """Owner shape: row id = HospitalDoctor.id (so PUT/DELETE target the attachment)."""
+
+    hospital_id = serializers.UUIDField(source='hospital.id', read_only=True)
+    doctor_id = serializers.UUIDField(source='doctor.id', read_only=True)
+    name = serializers.CharField(source='doctor.name', read_only=True)
+    phone = serializers.CharField(source='doctor.phone', read_only=True)
+    bmdc_registration_no = serializers.CharField(source='doctor.bmdc_registration_no', read_only=True)
+    availability_status = serializers.CharField(source='doctor.availability_status', read_only=True)
+    specialization = serializers.CharField(source='doctor.specialization', read_only=True)
+    created_at = serializers.DateTimeField(source='attached_at', read_only=True)
+
+    class Meta:
+        model = HospitalDoctor
+        fields = [
+            'id', 'hospital_id', 'doctor_id', 'name', 'phone', 'bmdc_registration_no',
+            'specialization', 'availability_status', 'schedule', 'status', 'created_at',
+        ]
+
+
+class HospitalDoctorPickSerializer(serializers.ModelSerializer):
+    """Manager shape: row id = Doctor.id (matches what gets stored on Appointment.doctor_id)."""
+
+    id = serializers.UUIDField(source='doctor.id', read_only=True)
+    hospital_id = serializers.UUIDField(source='hospital.id', read_only=True)
+    name = serializers.CharField(source='doctor.name', read_only=True)
+    phone = serializers.CharField(source='doctor.phone', read_only=True)
+    bmdc_registration_no = serializers.CharField(source='doctor.bmdc_registration_no', read_only=True)
+    availability_status = serializers.CharField(source='doctor.availability_status', read_only=True)
+    specialization = serializers.CharField(source='doctor.specialization', read_only=True)
+    created_at = serializers.DateTimeField(source='attached_at', read_only=True)
+
+    class Meta:
+        model = HospitalDoctor
+        fields = [
+            'id', 'hospital_id', 'name', 'phone', 'bmdc_registration_no',
+            'specialization', 'availability_status', 'schedule', 'status', 'created_at',
+        ]
 
 
 class NurseSerializer(serializers.ModelSerializer):
     hospital_id = serializers.UUIDField(source='hospital.id', read_only=True)
+    active_admission_count = serializers.IntegerField(read_only=True, default=0)
 
     class Meta:
         model = Nurse
-        fields = ['id', 'hospital_id', 'name', 'phone', 'ward', 'status', 'created_at']
+        fields = ['id', 'hospital_id', 'name', 'phone', 'ward', 'status', 'created_at', 'active_admission_count']

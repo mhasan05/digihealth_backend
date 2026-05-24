@@ -17,6 +17,7 @@ def get_tokens_for_user(user):
 
 
 class LoginView(APIView):
+    authentication_classes = []
     permission_classes = [AllowAny]
 
     def post(self, request):
@@ -49,6 +50,7 @@ class LoginView(APIView):
 
 
 class RegisterView(APIView):
+    authentication_classes = []
     permission_classes = [AllowAny]
 
     def post(self, request):
@@ -62,10 +64,8 @@ class RegisterView(APIView):
         if User.objects.filter(phone=phone).exists():
             return Response({'detail': 'এই ফোন নম্বরে ইতোমধ্যে একটি অ্যাকাউন্ট আছে।'}, status=status.HTTP_400_BAD_REQUEST)
 
-        demo, err = validate_demographics(request.data, require=True)
-        if err:
-            return Response({'detail': err}, status=status.HTTP_400_BAD_REQUEST)
-
+        # Demographics (age/gender/blood_group/address) are no longer required at
+        # signup — the patient can fill them in from Settings after logging in.
         with transaction.atomic():
             health_id = generate_health_id()
             user = User.objects.create_user(
@@ -77,10 +77,10 @@ class RegisterView(APIView):
             )
             Patient.objects.create(
                 user=user,
-                age=demo['age'],
-                gender=demo['gender'],
-                blood_group=demo['blood_group'],
-                address=demo['address'],
+                age=0,
+                gender='Other',
+                blood_group='Unknown',
+                address='',
                 subscription_tier='Free',
             )
             ActivityEvent.objects.create(
@@ -104,6 +104,7 @@ class LogoutView(APIView):
 
 
 class DemoLoginView(APIView):
+    authentication_classes = []
     permission_classes = [AllowAny]
 
     DEMO_PHONE_MAP = {

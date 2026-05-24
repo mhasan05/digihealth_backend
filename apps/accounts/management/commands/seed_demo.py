@@ -44,7 +44,7 @@ class Command(BaseCommand):
     def _seed(self):
         from apps.accounts.models import User, ActivityEvent
         from apps.hospitals.models import Hospital, Owner
-        from apps.staff.models import Manager, Pathologist, Doctor, Nurse
+        from apps.staff.models import Manager, Pathologist, Doctor, HospitalDoctor, Nurse
         from apps.patients.models import Patient, HealthMetric, MedicalReport, ReportAccessLog
         from apps.clinical.models import Bed, LabTest, Appointment, Admission, LabOrder, LabResult
         from apps.finance.models import MonthlyFinancial
@@ -162,31 +162,29 @@ class Command(BaseCommand):
             pathologists.append(path)
         self.stdout.write(f'  Pathologists: {len(pathologists)} created/found')
 
-        # ── Doctors ────────────────────────────────────────────────────────────
+        # ── Doctors (registry) + per-hospital attachments ─────────────────────
         doctor_data = [
-            (h1, 'Dr. Rafiqul Islam', 'Cardiology', '01744000001', 'Sat-Thu 9am-1pm'),
-            (h1, 'Dr. Salma Khatun', 'Gynecology', '01744000002', 'Sat-Thu 2pm-6pm'),
-            (h1, 'Dr. Zahir Ahmed', 'Orthopedics', '01744000003', 'Sun-Wed 10am-2pm'),
-            (h2, 'Dr. Nargis Parvin', 'Pediatrics', '01744000004', 'Sat-Thu 9am-1pm'),
-            (h2, 'Dr. Hasibul Haque', 'Neurology', '01744000005', 'Sat-Thu 3pm-7pm'),
-            (h2, 'Dr. Tahmina Begum', 'Dermatology', '01744000006', 'Sun-Wed 11am-3pm'),
+            (h1, 'Dr. Rafiqul Islam', 'Cardiology', '01744000001', 'Sat-Thu 9am-1pm', 'BMDC-A-1001'),
+            (h1, 'Dr. Salma Khatun', 'Gynecology', '01744000002', 'Sat-Thu 2pm-6pm', 'BMDC-A-1002'),
+            (h1, 'Dr. Zahir Ahmed', 'Orthopedics', '01744000003', 'Sun-Wed 10am-2pm', 'BMDC-A-1003'),
+            (h2, 'Dr. Nargis Parvin', 'Pediatrics', '01744000004', 'Sat-Thu 9am-1pm', 'BMDC-A-1004'),
+            (h2, 'Dr. Hasibul Haque', 'Neurology', '01744000005', 'Sat-Thu 3pm-7pm', 'BMDC-A-1005'),
+            (h2, 'Dr. Tahmina Begum', 'Dermatology', '01744000006', 'Sun-Wed 11am-3pm', 'BMDC-A-1006'),
         ]
-        doctors = []
-        for hospital, name, spec, phone, schedule in doctor_data:
+        h1_doctors, h2_doctors = [], []
+        for hospital, name, spec, phone, schedule, bmdc in doctor_data:
             doc, _ = Doctor.objects.get_or_create(
-                hospital=hospital,
                 phone=phone,
-                defaults={
-                    'name': name,
-                    'specialization': spec,
-                    'schedule': schedule,
-                    'status': 'Active',
-                }
+                defaults={'name': name, 'bmdc_registration_no': bmdc, 'specialization': spec},
             )
-            doctors.append(doc)
-        h1_doctors = [d for d in doctors if d.hospital == h1]
-        h2_doctors = [d for d in doctors if d.hospital == h2]
-        self.stdout.write(f'  Doctors: {len(doctors)} created/found')
+            HospitalDoctor.objects.get_or_create(
+                hospital=hospital,
+                doctor=doc,
+                defaults={'schedule': schedule, 'status': 'Active'},
+            )
+            (h1_doctors if hospital == h1 else h2_doctors).append(doc)
+        total = len(h1_doctors) + len(h2_doctors)
+        self.stdout.write(f'  Doctors: {total} attached across {2} hospitals')
 
         # ── Nurses ─────────────────────────────────────────────────────────────
         nurse_data = [
