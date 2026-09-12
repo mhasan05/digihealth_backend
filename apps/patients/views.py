@@ -83,6 +83,17 @@ class PatientMeView(APIView):
             if 'blood_group' in request.data and 'blood_group' not in demo:
                 patient.blood_group = 'Unknown'
                 patient.save(update_fields=['blood_group'])
+            # National ID — optional; if provided, must be 10, 13 or 17 digits.
+            # Empty string clears a previously-saved NID.
+            if 'nid' in request.data:
+                nid = (request.data.get('nid') or '').strip()
+                if nid and (not nid.isdigit() or len(nid) not in (10, 13, 17)):
+                    return Response(
+                        {'detail': 'nid must be 10, 13 or 17 digits.'},
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
+                patient.nid = nid
+                patient.save(update_fields=['nid'])
             # Privacy toggle — accepts true/false/1/0/"true"/"false".
             if 'is_private' in request.data:
                 raw = request.data.get('is_private')

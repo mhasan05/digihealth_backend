@@ -29,6 +29,8 @@ class Patient(models.Model):
     gender = models.CharField(max_length=10, choices=GENDER_CHOICES, default='Other')
     blood_group = models.CharField(max_length=10, default='Unknown')
     address = models.TextField(blank=True, default='')
+    # Self-reported National ID number. Optional — many patients don't provide one.
+    nid = models.CharField(max_length=20, blank=True, default='')
     subscription_tier = models.CharField(max_length=10, choices=SUBSCRIPTION_CHOICES, default='Free')
     hiv_status = models.CharField(max_length=10, choices=HIV_STATUS_CHOICES, default='Negative')
     # When True, the patient is hidden from doctor search and detail/report endpoints.
@@ -49,7 +51,7 @@ class Patient(models.Model):
 
 class HealthMetric(models.Model):
     METRIC_TYPE_CHOICES = [
-        ('hba1c', 'HbA1c'),
+        ('rbs', 'RBS'),
         ('blood_pressure', 'Blood Pressure'),
         ('weight', 'Weight'),
     ]

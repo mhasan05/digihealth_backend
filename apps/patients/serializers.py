@@ -13,7 +13,7 @@ class PatientSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'user_id', 'name', 'phone', 'age', 'gender',
             'blood_group', 'address', 'subscription_tier', 'health_id',
-            'hiv_status', 'is_private', 'conditions', 'created_at',
+            'hiv_status', 'is_private', 'conditions', 'nid', 'created_at',
         ]
 
 

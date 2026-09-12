@@ -325,9 +325,9 @@ class Command(BaseCommand):
         patients.append(multi_patient)
 
         # ── Health Metrics ─────────────────────────────────────────────────────
-        metric_types = ['hba1c', 'blood_pressure', 'weight']
+        metric_types = ['rbs', 'blood_pressure', 'weight']
         metric_values = {
-            'hba1c': ['5.8', '6.1', '6.4', '6.0', '5.9', '6.2'],
+            'rbs': ['138', '152', '165', '142', '136', '158'],
             'blood_pressure': ['120/80', '130/85', '125/82', '118/78', '122/80', '128/84'],
             'weight': ['72', '73', '74', '72.5', '71.8', '73.2'],
         }
