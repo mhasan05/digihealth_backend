@@ -17,6 +17,11 @@ from .serializers import MyRoleApplicationSerializer, RoleApplicationSerializer
 STAFF_ROLE_TYPES = ('nurse', 'medical_assistant', 'midwife')
 ORG_REQUIRED_FIELDS = ['org_name', 'org_type', 'registration_number', 'validity_till', 'org_phone', 'upazilla', 'district', 'division']
 
+# Role types that map 1:1 onto an actual `user.roles` portal entry — applying
+# again once you already hold it is redundant (and, since Pathologist rows
+# aren't OneToOne like Doctor, would create an ambiguous duplicate profile).
+ROLE_TYPE_TO_EXISTING_USER_ROLE = {'doctor': 'doctor', 'pathologist': 'pathologist'}
+
 
 class MyRoleApplicationListView(APIView):
     """Patient-facing: view my own applications, submit a new one."""
@@ -35,6 +40,13 @@ class MyRoleApplicationListView(APIView):
         if role_type not in valid_types:
             return Response(
                 {'detail': f'role_type must be one of {list(valid_types)}.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        existing_role = ROLE_TYPE_TO_EXISTING_USER_ROLE.get(role_type)
+        if existing_role and existing_role in request.user.roles:
+            return Response(
+                {'detail': f'You already have the {existing_role} role.'},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
@@ -164,6 +176,21 @@ class AdminRoleApplicationApproveView(APIView):
                     phone=applicant.phone,
                     status='Active',
                 )
+
+            elif application.role_type == 'pathologist':
+                from apps.staff.models import Pathologist
+                # Pathologist isn't OneToOne like Doctor, and `user.roles` is
+                # only granted at import time (see _StaffImportView.grant_role)
+                # — so guard against a second unattached row for someone who
+                # somehow already has one (the submission-time check above
+                # blocks this in the normal flow; this is a defensive backstop).
+                if not Pathologist.objects.filter(user=applicant).exists():
+                    Pathologist.objects.create(
+                        user=applicant,
+                        hospital=None,
+                        specialization='',
+                        status='Active',
+                    )
 
             elif application.role_type == 'organization_owner':
                 from apps.hospitals.models import Hospital, Owner

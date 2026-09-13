@@ -22,6 +22,7 @@ class RoleApplication(models.Model):
         ('nurse', 'Nurse'),
         ('medical_assistant', 'Medical Assistant'),
         ('midwife', 'Midwife'),
+        ('pathologist', 'Pathologist'),
         ('organization_owner', 'Organization Owner'),
     ]
 

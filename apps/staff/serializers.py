@@ -32,7 +32,9 @@ class ManagerSerializer(serializers.ModelSerializer):
 
 
 class PathologistSerializer(serializers.ModelSerializer):
-    hospital_id = serializers.UUIDField(source='hospital.id', read_only=True)
+    # Plain field (see NurseSerializer for why dotted source='hospital.id'
+    # would silently omit this key when hospital is None).
+    hospital_id = serializers.UUIDField(read_only=True, allow_null=True)
     name = serializers.CharField(source='user.name', read_only=True)
     phone = serializers.CharField(source='user.phone', read_only=True)
     email = serializers.SerializerMethodField()

@@ -33,7 +33,14 @@ class Pathologist(models.Model):
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='pathologist_profiles')
-    hospital = models.ForeignKey(Hospital, on_delete=models.CASCADE, related_name='pathologists')
+    # Nullable to represent an admin-approved role-application not yet imported
+    # into a hospital — see apps.role_applications. The 'pathologist' role is
+    # only granted to the user once an owner sets this (see staff/views.py
+    # _StaffImportView.grant_role), matching the pre-existing owner-direct-add
+    # flow where role + hospital were always set together.
+    hospital = models.ForeignKey(
+        Hospital, on_delete=models.CASCADE, related_name='pathologists', null=True, blank=True,
+    )
     specialization = models.CharField(max_length=200, default='')
     status = models.CharField(max_length=10, choices=STATUS_CHOICES, default='Active')
     created_at = models.DateTimeField(auto_now_add=True)

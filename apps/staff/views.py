@@ -278,47 +278,9 @@ class PathologistListView(APIView):
         pathologists = Pathologist.objects.filter(hospital=owner_profile.hospital).select_related('user')
         return Response(PathologistSerializer(pathologists, many=True).data)
 
-    def post(self, request):
-        owner_profile = get_hospital_for_owner(request.user)
-        if not owner_profile:
-            return Response({'detail': 'Owner profile not found.'}, status=status.HTTP_404_NOT_FOUND)
-
-        name = request.data.get('name', '').strip()
-        phone = request.data.get('phone', '').strip()
-        email = request.data.get('email', '').strip()
-        password = request.data.get('password', 'demo1234')
-        specialization = request.data.get('specialization', '')
-        status_val = request.data.get('status', 'Active')
-
-        if not name or not phone:
-            return Response({'detail': 'name and phone are required.'}, status=status.HTTP_400_BAD_REQUEST)
-
-        if User.objects.filter(phone=phone).exists():
-            return Response({'detail': 'A user with this phone already exists.'}, status=status.HTTP_400_BAD_REQUEST)
-
-        demo, err = validate_demographics(request.data, require=True)
-        if err:
-            return Response({'detail': err}, status=status.HTTP_400_BAD_REQUEST)
-
-        with transaction.atomic():
-            health_id = generate_health_id()
-            user = User.objects.create_user(
-                phone=phone,
-                password=password,
-                name=name,
-                email=email or None,
-                health_id=health_id,
-                roles=['pathologist'],
-            )
-            ensure_patient_profile(user, **demo)
-            pathologist = Pathologist.objects.create(
-                user=user,
-                hospital=owner_profile.hospital,
-                specialization=specialization,
-                status=status_val,
-            )
-
-        return Response(PathologistSerializer(pathologist).data, status=status.HTTP_201_CREATED)
+    # No `post()` — owners can only bring pathologists on via
+    # PathologistImportView (admin-approved applicants), not create them
+    # directly. See apps.role_applications for the application/approval flow.
 
 
 class PathologistDetailView(APIView):
@@ -507,27 +469,9 @@ class NurseListView(APIView):
         nurses = Nurse.objects.filter(hospital=owner_profile.hospital)
         return Response(NurseSerializer(nurses, many=True).data)
 
-    def post(self, request):
-        owner_profile = get_hospital_for_owner(request.user)
-        if not owner_profile:
-            return Response({'detail': 'Owner profile not found.'}, status=status.HTTP_404_NOT_FOUND)
-
-        name = request.data.get('name', '').strip()
-        phone = request.data.get('phone', '').strip()
-        ward = request.data.get('ward', '')
-        status_val = request.data.get('status', 'Active')
-
-        if not name or not phone:
-            return Response({'detail': 'name and phone are required.'}, status=status.HTTP_400_BAD_REQUEST)
-
-        nurse = Nurse.objects.create(
-            hospital=owner_profile.hospital,
-            name=name,
-            phone=phone,
-            ward=ward,
-            status=status_val,
-        )
-        return Response(NurseSerializer(nurse).data, status=status.HTTP_201_CREATED)
+    # No `post()` — owners can only bring nurses on via NurseImportView
+    # (admin-approved applicants), not create them directly. See
+    # apps.role_applications for the application/approval flow.
 
 
 class NurseDetailView(APIView):
@@ -569,6 +513,9 @@ class _AvailableStaffSearchView(APIView):
     permission_classes = [IsOwner]
     model = None
     serializer_class = None
+    # Field names to search — override for models that don't store name/phone
+    # directly (e.g. Pathologist, which sources them from `user`).
+    search_fields = ('name', 'phone')
 
     def get(self, request):
         owner_profile = get_hospital_for_owner(request.user)
@@ -577,7 +524,10 @@ class _AvailableStaffSearchView(APIView):
         q = request.query_params.get('q', '').strip()
         qs = self.model.objects.filter(hospital__isnull=True)
         if q:
-            qs = qs.filter(Q(name__icontains=q) | Q(phone__icontains=q))
+            filt = Q()
+            for field in self.search_fields:
+                filt |= Q(**{f'{field}__icontains': q})
+            qs = qs.filter(filt)
         qs = qs.order_by('-created_at')[:20]
         return Response(self.serializer_class(qs, many=True).data)
 
@@ -587,6 +537,14 @@ class _StaffImportView(APIView):
     model = None
     serializer_class = None
     id_field = None
+    # Optional model attribute settable at import time from the same-named
+    # request field (e.g. 'ward' for Nurse/MedicalAssistant/Midwife,
+    # 'specialization' for Pathologist).
+    extra_field = None
+    # If set, granted on the underlying user's roles once attached — only
+    # Pathologist needs this (it already has a real login portal; Nurse/
+    # MedicalAssistant/Midwife don't, per apps.role_applications design).
+    grant_role = None
 
     def post(self, request):
         owner_profile = get_hospital_for_owner(request.user)
@@ -600,12 +558,20 @@ class _StaffImportView(APIView):
         except (self.model.DoesNotExist, ValueError, django_exceptions.ValidationError):
             return Response({'detail': 'Applicant not found or already attached.'}, status=status.HTTP_404_NOT_FOUND)
 
-        ward = request.data.get('ward')
-        if ward is not None:
-            row.ward = ward
+        if self.extra_field:
+            extra_value = request.data.get(self.extra_field)
+            if extra_value is not None:
+                setattr(row, self.extra_field, extra_value)
         row.hospital = owner_profile.hospital
         row.status = 'Active'
         row.save()
+
+        if self.grant_role and getattr(row, 'user_id', None):
+            user = row.user
+            if self.grant_role not in user.roles:
+                user.roles = user.roles + [self.grant_role]
+                user.save(update_fields=['roles'])
+
         return Response(self.serializer_class(row).data)
 
 
@@ -620,6 +586,20 @@ class NurseImportView(_StaffImportView):
     id_field = 'nurse_id'
 
 
+class PathologistAvailableSearchView(_AvailableStaffSearchView):
+    model = Pathologist
+    serializer_class = PathologistSerializer
+    search_fields = ('user__name', 'user__phone')
+
+
+class PathologistImportView(_StaffImportView):
+    model = Pathologist
+    serializer_class = PathologistSerializer
+    id_field = 'pathologist_id'
+    extra_field = 'specialization'
+    grant_role = 'pathologist'
+
+
 # ─── Medical Assistants ─────────────────────────────────────────────────────
 
 class MedicalAssistantListView(APIView):
@@ -632,23 +612,9 @@ class MedicalAssistantListView(APIView):
         rows = MedicalAssistant.objects.filter(hospital=owner_profile.hospital)
         return Response(MedicalAssistantSerializer(rows, many=True).data)
 
-    def post(self, request):
-        owner_profile = get_hospital_for_owner(request.user)
-        if not owner_profile:
-            return Response({'detail': 'Owner profile not found.'}, status=status.HTTP_404_NOT_FOUND)
-
-        name = request.data.get('name', '').strip()
-        phone = request.data.get('phone', '').strip()
-        ward = request.data.get('ward', '')
-        status_val = request.data.get('status', 'Active')
-
-        if not name or not phone:
-            return Response({'detail': 'name and phone are required.'}, status=status.HTTP_400_BAD_REQUEST)
-
-        row = MedicalAssistant.objects.create(
-            hospital=owner_profile.hospital, name=name, phone=phone, ward=ward, status=status_val,
-        )
-        return Response(MedicalAssistantSerializer(row).data, status=status.HTTP_201_CREATED)
+    # No `post()` — owners can only bring medical assistants on via
+    # MedicalAssistantImportView (admin-approved applicants), not create them
+    # directly. See apps.role_applications for the application/approval flow.
 
 
 class MedicalAssistantDetailView(APIView):
@@ -704,23 +670,9 @@ class MidwifeListView(APIView):
         rows = Midwife.objects.filter(hospital=owner_profile.hospital)
         return Response(MidwifeSerializer(rows, many=True).data)
 
-    def post(self, request):
-        owner_profile = get_hospital_for_owner(request.user)
-        if not owner_profile:
-            return Response({'detail': 'Owner profile not found.'}, status=status.HTTP_404_NOT_FOUND)
-
-        name = request.data.get('name', '').strip()
-        phone = request.data.get('phone', '').strip()
-        ward = request.data.get('ward', '')
-        status_val = request.data.get('status', 'Active')
-
-        if not name or not phone:
-            return Response({'detail': 'name and phone are required.'}, status=status.HTTP_400_BAD_REQUEST)
-
-        row = Midwife.objects.create(
-            hospital=owner_profile.hospital, name=name, phone=phone, ward=ward, status=status_val,
-        )
-        return Response(MidwifeSerializer(row).data, status=status.HTTP_201_CREATED)
+    # No `post()` — owners can only bring midwives on via MidwifeImportView
+    # (admin-approved applicants), not create them directly. See
+    # apps.role_applications for the application/approval flow.
 
 
 class MidwifeDetailView(APIView):
