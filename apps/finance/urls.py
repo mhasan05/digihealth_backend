@@ -7,6 +7,7 @@ from apps.patients.views import (
     MedicalReportDetailView,
     PrivacyLogView,
 )
+from apps.role_applications.views import MyRoleApplicationListView
 
 # These are the /api/patient/* routes
 urlpatterns = [
@@ -16,4 +17,5 @@ urlpatterns = [
     path('reports/', MedicalReportListView.as_view(), name='patient-reports-list'),
     path('reports/<uuid:pk>/', MedicalReportDetailView.as_view(), name='patient-report-detail'),
     path('privacy-log/', PrivacyLogView.as_view(), name='patient-privacy-log'),
+    path('role-applications/', MyRoleApplicationListView.as_view(), name='patient-role-application-list'),
 ]

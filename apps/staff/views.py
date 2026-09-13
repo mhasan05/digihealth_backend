@@ -1,4 +1,5 @@
 from django.db import transaction
+from django.core import exceptions as django_exceptions
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
@@ -17,10 +18,10 @@ from apps.clinical.models import Bed, LabTest
 from apps.clinical.serializers import BedSerializer, LabTestSerializer
 from apps.finance.models import MonthlyFinancial
 from django.db.models import Q
-from .models import Manager, Pathologist, Doctor, HospitalDoctor, Nurse
+from .models import Manager, Pathologist, Doctor, HospitalDoctor, Nurse, MedicalAssistant, Midwife
 from .serializers import (
     ManagerSerializer, PathologistSerializer, DoctorSerializer,
-    HospitalDoctorSerializer, NurseSerializer,
+    HospitalDoctorSerializer, NurseSerializer, MedicalAssistantSerializer, MidwifeSerializer,
 )
 
 
@@ -557,6 +558,210 @@ class NurseDetailView(APIView):
             return Response({'detail': 'Nurse not found.'}, status=status.HTTP_404_NOT_FOUND)
         nurse.delete()
         return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+# ─── Approved-but-unattached staff (role applications awaiting import) ────────
+# Generic base views shared by Nurse / MedicalAssistant / Midwife: an admin-
+# approved apps.role_applications.RoleApplication creates one of these rows
+# with hospital=None; an owner "imports" it into their hospital here.
+
+class _AvailableStaffSearchView(APIView):
+    permission_classes = [IsOwner]
+    model = None
+    serializer_class = None
+
+    def get(self, request):
+        owner_profile = get_hospital_for_owner(request.user)
+        if not owner_profile:
+            return Response({'detail': 'Owner profile not found.'}, status=status.HTTP_404_NOT_FOUND)
+        q = request.query_params.get('q', '').strip()
+        qs = self.model.objects.filter(hospital__isnull=True)
+        if q:
+            qs = qs.filter(Q(name__icontains=q) | Q(phone__icontains=q))
+        qs = qs.order_by('-created_at')[:20]
+        return Response(self.serializer_class(qs, many=True).data)
+
+
+class _StaffImportView(APIView):
+    permission_classes = [IsOwner]
+    model = None
+    serializer_class = None
+    id_field = None
+
+    def post(self, request):
+        owner_profile = get_hospital_for_owner(request.user)
+        if not owner_profile:
+            return Response({'detail': 'Owner profile not found.'}, status=status.HTTP_404_NOT_FOUND)
+        row_id = request.data.get(self.id_field)
+        if not row_id:
+            return Response({'detail': f'{self.id_field} is required.'}, status=status.HTTP_400_BAD_REQUEST)
+        try:
+            row = self.model.objects.get(pk=row_id, hospital__isnull=True)
+        except (self.model.DoesNotExist, ValueError, django_exceptions.ValidationError):
+            return Response({'detail': 'Applicant not found or already attached.'}, status=status.HTTP_404_NOT_FOUND)
+
+        ward = request.data.get('ward')
+        if ward is not None:
+            row.ward = ward
+        row.hospital = owner_profile.hospital
+        row.status = 'Active'
+        row.save()
+        return Response(self.serializer_class(row).data)
+
+
+class NurseAvailableSearchView(_AvailableStaffSearchView):
+    model = Nurse
+    serializer_class = NurseSerializer
+
+
+class NurseImportView(_StaffImportView):
+    model = Nurse
+    serializer_class = NurseSerializer
+    id_field = 'nurse_id'
+
+
+# ─── Medical Assistants ─────────────────────────────────────────────────────
+
+class MedicalAssistantListView(APIView):
+    permission_classes = [IsOwner]
+
+    def get(self, request):
+        owner_profile = get_hospital_for_owner(request.user)
+        if not owner_profile:
+            return Response({'detail': 'Owner profile not found.'}, status=status.HTTP_404_NOT_FOUND)
+        rows = MedicalAssistant.objects.filter(hospital=owner_profile.hospital)
+        return Response(MedicalAssistantSerializer(rows, many=True).data)
+
+    def post(self, request):
+        owner_profile = get_hospital_for_owner(request.user)
+        if not owner_profile:
+            return Response({'detail': 'Owner profile not found.'}, status=status.HTTP_404_NOT_FOUND)
+
+        name = request.data.get('name', '').strip()
+        phone = request.data.get('phone', '').strip()
+        ward = request.data.get('ward', '')
+        status_val = request.data.get('status', 'Active')
+
+        if not name or not phone:
+            return Response({'detail': 'name and phone are required.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        row = MedicalAssistant.objects.create(
+            hospital=owner_profile.hospital, name=name, phone=phone, ward=ward, status=status_val,
+        )
+        return Response(MedicalAssistantSerializer(row).data, status=status.HTTP_201_CREATED)
+
+
+class MedicalAssistantDetailView(APIView):
+    permission_classes = [IsOwner]
+
+    def put(self, request, pk):
+        owner_profile = get_hospital_for_owner(request.user)
+        if not owner_profile:
+            return Response({'detail': 'Owner profile not found.'}, status=status.HTTP_404_NOT_FOUND)
+        try:
+            row = MedicalAssistant.objects.get(pk=pk, hospital=owner_profile.hospital)
+        except MedicalAssistant.DoesNotExist:
+            return Response({'detail': 'Medical assistant not found.'}, status=status.HTTP_404_NOT_FOUND)
+
+        for field in ['name', 'phone', 'ward', 'status']:
+            if field in request.data:
+                setattr(row, field, request.data[field])
+        row.save()
+        return Response(MedicalAssistantSerializer(row).data)
+
+    def delete(self, request, pk):
+        owner_profile = get_hospital_for_owner(request.user)
+        if not owner_profile:
+            return Response({'detail': 'Owner profile not found.'}, status=status.HTTP_404_NOT_FOUND)
+        try:
+            row = MedicalAssistant.objects.get(pk=pk, hospital=owner_profile.hospital)
+        except MedicalAssistant.DoesNotExist:
+            return Response({'detail': 'Medical assistant not found.'}, status=status.HTTP_404_NOT_FOUND)
+        row.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+class MedicalAssistantAvailableSearchView(_AvailableStaffSearchView):
+    model = MedicalAssistant
+    serializer_class = MedicalAssistantSerializer
+
+
+class MedicalAssistantImportView(_StaffImportView):
+    model = MedicalAssistant
+    serializer_class = MedicalAssistantSerializer
+    id_field = 'medical_assistant_id'
+
+
+# ─── Midwives ───────────────────────────────────────────────────────────────
+
+class MidwifeListView(APIView):
+    permission_classes = [IsOwner]
+
+    def get(self, request):
+        owner_profile = get_hospital_for_owner(request.user)
+        if not owner_profile:
+            return Response({'detail': 'Owner profile not found.'}, status=status.HTTP_404_NOT_FOUND)
+        rows = Midwife.objects.filter(hospital=owner_profile.hospital)
+        return Response(MidwifeSerializer(rows, many=True).data)
+
+    def post(self, request):
+        owner_profile = get_hospital_for_owner(request.user)
+        if not owner_profile:
+            return Response({'detail': 'Owner profile not found.'}, status=status.HTTP_404_NOT_FOUND)
+
+        name = request.data.get('name', '').strip()
+        phone = request.data.get('phone', '').strip()
+        ward = request.data.get('ward', '')
+        status_val = request.data.get('status', 'Active')
+
+        if not name or not phone:
+            return Response({'detail': 'name and phone are required.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        row = Midwife.objects.create(
+            hospital=owner_profile.hospital, name=name, phone=phone, ward=ward, status=status_val,
+        )
+        return Response(MidwifeSerializer(row).data, status=status.HTTP_201_CREATED)
+
+
+class MidwifeDetailView(APIView):
+    permission_classes = [IsOwner]
+
+    def put(self, request, pk):
+        owner_profile = get_hospital_for_owner(request.user)
+        if not owner_profile:
+            return Response({'detail': 'Owner profile not found.'}, status=status.HTTP_404_NOT_FOUND)
+        try:
+            row = Midwife.objects.get(pk=pk, hospital=owner_profile.hospital)
+        except Midwife.DoesNotExist:
+            return Response({'detail': 'Midwife not found.'}, status=status.HTTP_404_NOT_FOUND)
+
+        for field in ['name', 'phone', 'ward', 'status']:
+            if field in request.data:
+                setattr(row, field, request.data[field])
+        row.save()
+        return Response(MidwifeSerializer(row).data)
+
+    def delete(self, request, pk):
+        owner_profile = get_hospital_for_owner(request.user)
+        if not owner_profile:
+            return Response({'detail': 'Owner profile not found.'}, status=status.HTTP_404_NOT_FOUND)
+        try:
+            row = Midwife.objects.get(pk=pk, hospital=owner_profile.hospital)
+        except Midwife.DoesNotExist:
+            return Response({'detail': 'Midwife not found.'}, status=status.HTTP_404_NOT_FOUND)
+        row.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+class MidwifeAvailableSearchView(_AvailableStaffSearchView):
+    model = Midwife
+    serializer_class = MidwifeSerializer
+
+
+class MidwifeImportView(_StaffImportView):
+    model = Midwife
+    serializer_class = MidwifeSerializer
+    id_field = 'midwife_id'
 
 
 # ─── Beds (Owner manages beds) ────────────────────────────────────────────────

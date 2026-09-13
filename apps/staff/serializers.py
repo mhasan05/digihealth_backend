@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import Manager, Pathologist, Doctor, HospitalDoctor, Nurse
+from .models import Manager, Pathologist, Doctor, HospitalDoctor, Nurse, MedicalAssistant, Midwife
 
 
 def _patient_field(obj, field, default=None):
@@ -108,9 +108,28 @@ class HospitalDoctorPickSerializer(serializers.ModelSerializer):
 
 
 class NurseSerializer(serializers.ModelSerializer):
-    hospital_id = serializers.UUIDField(source='hospital.id', read_only=True)
+    # Plain field (not source='hospital.id') so it reads Django's own hospital_id
+    # attribute directly and comes back null — rather than being silently
+    # skipped — for an approved-but-not-yet-imported nurse (hospital is None).
+    hospital_id = serializers.UUIDField(read_only=True, allow_null=True)
     active_admission_count = serializers.IntegerField(read_only=True, default=0)
 
     class Meta:
         model = Nurse
         fields = ['id', 'hospital_id', 'name', 'phone', 'ward', 'status', 'created_at', 'active_admission_count']
+
+
+class MedicalAssistantSerializer(serializers.ModelSerializer):
+    hospital_id = serializers.UUIDField(read_only=True, allow_null=True)
+
+    class Meta:
+        model = MedicalAssistant
+        fields = ['id', 'hospital_id', 'name', 'phone', 'ward', 'status', 'created_at']
+
+
+class MidwifeSerializer(serializers.ModelSerializer):
+    hospital_id = serializers.UUIDField(read_only=True, allow_null=True)
+
+    class Meta:
+        model = Midwife
+        fields = ['id', 'hospital_id', 'name', 'phone', 'ward', 'status', 'created_at']

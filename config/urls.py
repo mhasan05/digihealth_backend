@@ -1,6 +1,7 @@
 from django.contrib import admin
 from django.urls import path, include
 from apps.patients.views import ReportFileView
+from apps.role_applications.views import RoleApplicationFileView
 
 urlpatterns = [
     path('admin/', admin.site.urls),
@@ -23,4 +24,7 @@ urlpatterns = [
     # here — that would expose /media/reports/<health_id>/<file> to anyone who
     # guesses the path. All medical-report bytes must go through this view.
     path('api/files/reports/', ReportFileView.as_view(), name='report-file'),
+    # Signed-URL file delivery for role-application documents/photos — same
+    # rationale as the report file view above.
+    path('api/files/role-applications/', RoleApplicationFileView.as_view(), name='role-application-file'),
 ]

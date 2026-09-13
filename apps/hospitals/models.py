@@ -9,6 +9,7 @@ class Hospital(models.Model):
         ('Specialized', 'Specialized'),
         ('Clinic', 'Clinic'),
         ('Diagnostic', 'Diagnostic'),
+        ('Hospital', 'Hospital'),
     ]
     STATUS_CHOICES = [
         ('Active', 'Active'),

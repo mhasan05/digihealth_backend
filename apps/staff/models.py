@@ -105,6 +105,15 @@ class HospitalDoctor(models.Model):
 
 
 class Nurse(models.Model):
+    """Hospital-scoped staff record.
+
+    `hospital` is nullable to represent an admin-approved role-application
+    that hasn't been imported into a hospital yet (see apps.role_applications).
+    `user` is nullable too — nurses added directly by an owner (the original
+    flow) have no backing account; nurses that came through an approved
+    application are linked to the applicant's User.
+    """
+
     STATUS_CHOICES = [
         ('Active', 'Active'),
         ('Inactive', 'Inactive'),
@@ -112,7 +121,13 @@ class Nurse(models.Model):
     ]
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    hospital = models.ForeignKey(Hospital, on_delete=models.CASCADE, related_name='nurses')
+    hospital = models.ForeignKey(
+        Hospital, on_delete=models.CASCADE, related_name='nurses', null=True, blank=True,
+    )
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='nurse_profile',
+    )
     name = models.CharField(max_length=200)
     phone = models.CharField(max_length=20)
     ward = models.CharField(max_length=100, default='')
@@ -121,6 +136,68 @@ class Nurse(models.Model):
 
     class Meta:
         db_table = 'staff_nurse'
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return self.name
+
+
+class MedicalAssistant(models.Model):
+    """Mirrors Nurse — see its docstring for the nullable hospital/user rationale."""
+
+    STATUS_CHOICES = [
+        ('Active', 'Active'),
+        ('Inactive', 'Inactive'),
+        ('On-leave', 'On-leave'),
+    ]
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    hospital = models.ForeignKey(
+        Hospital, on_delete=models.CASCADE, related_name='medical_assistants', null=True, blank=True,
+    )
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='medical_assistant_profile',
+    )
+    name = models.CharField(max_length=200)
+    phone = models.CharField(max_length=20)
+    ward = models.CharField(max_length=100, default='')
+    status = models.CharField(max_length=10, choices=STATUS_CHOICES, default='Active')
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'staff_medical_assistant'
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return self.name
+
+
+class Midwife(models.Model):
+    """Mirrors Nurse — see its docstring for the nullable hospital/user rationale."""
+
+    STATUS_CHOICES = [
+        ('Active', 'Active'),
+        ('Inactive', 'Inactive'),
+        ('On-leave', 'On-leave'),
+    ]
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    hospital = models.ForeignKey(
+        Hospital, on_delete=models.CASCADE, related_name='midwives', null=True, blank=True,
+    )
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='midwife_profile',
+    )
+    name = models.CharField(max_length=200)
+    phone = models.CharField(max_length=20)
+    ward = models.CharField(max_length=100, default='')
+    status = models.CharField(max_length=10, choices=STATUS_CHOICES, default='Active')
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'staff_midwife'
         ordering = ['-created_at']
 
     def __str__(self):

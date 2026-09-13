@@ -1,5 +1,5 @@
 from django.contrib import admin
-from .models import Manager, Pathologist, Doctor, HospitalDoctor, Nurse
+from .models import Manager, Pathologist, Doctor, HospitalDoctor, Nurse, MedicalAssistant, Midwife
 
 
 @admin.register(Manager)
@@ -43,4 +43,22 @@ class NurseAdmin(admin.ModelAdmin):
     list_filter     = ('status', 'hospital')
     search_fields   = ('name', 'phone', 'ward', 'hospital__name_en')
     readonly_fields = ('id', 'created_at')
-    raw_id_fields   = ('hospital',)
+    raw_id_fields   = ('hospital', 'user')
+
+
+@admin.register(MedicalAssistant)
+class MedicalAssistantAdmin(admin.ModelAdmin):
+    list_display    = ('name', 'hospital', 'ward', 'phone', 'status', 'created_at')
+    list_filter     = ('status', 'hospital')
+    search_fields   = ('name', 'phone', 'ward', 'hospital__name_en')
+    readonly_fields = ('id', 'created_at')
+    raw_id_fields   = ('hospital', 'user')
+
+
+@admin.register(Midwife)
+class MidwifeAdmin(admin.ModelAdmin):
+    list_display    = ('name', 'hospital', 'ward', 'phone', 'status', 'created_at')
+    list_filter     = ('status', 'hospital')
+    search_fields   = ('name', 'phone', 'ward', 'hospital__name_en')
+    readonly_fields = ('id', 'created_at')
+    raw_id_fields   = ('hospital', 'user')
