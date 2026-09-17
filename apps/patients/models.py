@@ -25,6 +25,12 @@ class Patient(models.Model):
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     user = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='patient_profile')
+    # `age` stays as the authoritative, widely-read field (owner/manager/pathologist
+    # demographics, admissions, etc. all read/write it directly). For the patient's
+    # own profile edit, `date_of_birth` is the field actually collected — age is
+    # derived from it and kept in sync server-side (see PatientMeView.put). Nullable
+    # since existing patients predate this field and may never set it.
+    date_of_birth = models.DateField(null=True, blank=True)
     age = models.IntegerField(default=0)
     gender = models.CharField(max_length=10, choices=GENDER_CHOICES, default='Other')
     blood_group = models.CharField(max_length=10, default='Unknown')

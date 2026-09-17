@@ -11,7 +11,7 @@ class PatientSerializer(serializers.ModelSerializer):
     class Meta:
         model = Patient
         fields = [
-            'id', 'user_id', 'name', 'phone', 'age', 'gender',
+            'id', 'user_id', 'name', 'phone', 'age', 'date_of_birth', 'gender',
             'blood_group', 'address', 'subscription_tier', 'health_id',
             'hiv_status', 'is_private', 'conditions', 'nid', 'created_at',
         ]

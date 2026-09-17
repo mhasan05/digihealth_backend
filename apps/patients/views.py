@@ -52,15 +52,42 @@ class PatientMeView(APIView):
         """Self-edit: every authenticated user can update their own profile."""
         from core.utils import validate_demographics
         from django.db import transaction
+        from django.utils import timezone
+        from django.utils.dateparse import parse_date
 
         patient = self._ensure_patient(request.user)
         user = patient.user
+
+        # Age is collected as a date of birth on this endpoint and derived
+        # server-side, rather than typed directly — see the model docstring.
+        dob_provided = 'date_of_birth' in request.data
+        dob = None
+        if dob_provided:
+            dob_str = (request.data.get('date_of_birth') or '').strip()
+            if dob_str:
+                dob = parse_date(dob_str)
+                if not dob:
+                    return Response(
+                        {'detail': 'date_of_birth must be a valid date (YYYY-MM-DD).'},
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
+                today = timezone.now().date()
+                if dob > today:
+                    return Response({'detail': 'date_of_birth cannot be in the future.'}, status=status.HTTP_400_BAD_REQUEST)
 
         demo, err = validate_demographics(request.data, require=False)
         if err:
             return Response({'detail': err}, status=status.HTTP_400_BAD_REQUEST)
 
+        if dob:
+            today = timezone.now().date()
+            age = today.year - dob.year - ((today.month, today.day) < (dob.month, dob.day))
+            demo = {**(demo or {}), 'age': age}
+
         with transaction.atomic():
+            if dob_provided:
+                patient.date_of_birth = dob
+                patient.save(update_fields=['date_of_birth'])
             if 'name' in request.data:
                 name = (request.data.get('name') or '').strip()
                 if name:
