@@ -84,68 +84,83 @@ class PatientMeView(APIView):
             age = today.year - dob.year - ((today.month, today.day) < (dob.month, dob.day))
             demo = {**(demo or {}), 'age': age}
 
-        with transaction.atomic():
-            if dob_provided:
-                patient.date_of_birth = dob
-                patient.save(update_fields=['date_of_birth'])
-            if 'name' in request.data:
-                name = (request.data.get('name') or '').strip()
-                if name:
-                    user.name = name
-                    user.save(update_fields=['name'])
-            if 'email' in request.data:
-                user.email = (request.data.get('email') or '').strip() or None
-                user.save(update_fields=['email'])
+        # National ID — optional; if provided, must be 10, 13 or 17 digits.
+        # Empty string clears a previously-saved NID.
+        nid = None
+        if 'nid' in request.data:
+            nid = (request.data.get('nid') or '').strip()
+            if nid and (not nid.isdigit() or len(nid) not in (10, 13, 17)):
+                return Response(
+                    {'detail': 'nid must be 10, 13 or 17 digits.'},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
 
-            # Demographics — partial update
-            if demo:
-                for k, v in demo.items():
-                    setattr(patient, k, v)
-                patient.save()
-            # Address may be set to empty (allowed since we're updating self)
-            if 'address' in request.data and 'address' not in demo:
-                patient.address = (request.data.get('address') or '').strip()
-                patient.save(update_fields=['address'])
-            # Blood group can be cleared by sending empty string
-            if 'blood_group' in request.data and 'blood_group' not in demo:
-                patient.blood_group = 'Unknown'
-                patient.save(update_fields=['blood_group'])
-            # National ID — optional; if provided, must be 10, 13 or 17 digits.
-            # Empty string clears a previously-saved NID.
-            if 'nid' in request.data:
-                nid = (request.data.get('nid') or '').strip()
-                if nid and (not nid.isdigit() or len(nid) not in (10, 13, 17)):
-                    return Response(
-                        {'detail': 'nid must be 10, 13 or 17 digits.'},
-                        status=status.HTTP_400_BAD_REQUEST,
-                    )
-                patient.nid = nid
-                patient.save(update_fields=['nid'])
-            # Privacy toggle — accepts true/false/1/0/"true"/"false".
-            if 'is_private' in request.data:
-                raw = request.data.get('is_private')
-                if isinstance(raw, str):
-                    raw = raw.strip().lower() in ('true', '1', 'yes', 'on')
-                patient.is_private = bool(raw)
-                patient.save(update_fields=['is_private'])
-            # Self-reported chronic conditions — must be a list of allowed slugs.
-            if 'conditions' in request.data:
-                raw_list = request.data.get('conditions') or []
-                if not isinstance(raw_list, list):
-                    return Response(
-                        {'detail': 'conditions must be a list.'},
-                        status=status.HTTP_400_BAD_REQUEST,
-                    )
-                allowed = set(Patient.CONDITION_CHOICES)
-                cleaned = []
-                seen = set()
-                for item in raw_list:
-                    slug = str(item).strip().lower()
-                    if slug in allowed and slug not in seen:
-                        cleaned.append(slug)
-                        seen.add(slug)
-                patient.conditions = cleaned
-                patient.save(update_fields=['conditions'])
+        # Self-reported chronic conditions — must be a list of allowed slugs.
+        conditions = None
+        if 'conditions' in request.data:
+            raw_list = request.data.get('conditions') or []
+            if not isinstance(raw_list, list):
+                return Response(
+                    {'detail': 'conditions must be a list.'},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            allowed = set(Patient.CONDITION_CHOICES)
+            conditions = []
+            seen = set()
+            for item in raw_list:
+                slug = str(item).strip().lower()
+                if slug in allowed and slug not in seen:
+                    conditions.append(slug)
+                    seen.add(slug)
+
+        # All validation above happens before any writes — everything below
+        # is a single UPDATE per row, batched in one short-lived transaction,
+        # to minimize how long the SQLite write lock is held.
+        user_fields = []
+        if 'name' in request.data:
+            name = (request.data.get('name') or '').strip()
+            if name:
+                user.name = name
+                user_fields.append('name')
+        if 'email' in request.data:
+            user.email = (request.data.get('email') or '').strip() or None
+            user_fields.append('email')
+
+        patient_fields = []
+        if dob_provided:
+            patient.date_of_birth = dob
+            patient_fields.append('date_of_birth')
+        if demo:
+            for k, v in demo.items():
+                setattr(patient, k, v)
+            patient_fields.extend(demo.keys())
+        # Address may be set to empty (allowed since we're updating self)
+        if 'address' in request.data and 'address' not in demo:
+            patient.address = (request.data.get('address') or '').strip()
+            patient_fields.append('address')
+        # Blood group can be cleared by sending empty string
+        if 'blood_group' in request.data and 'blood_group' not in demo:
+            patient.blood_group = 'Unknown'
+            patient_fields.append('blood_group')
+        if nid is not None:
+            patient.nid = nid
+            patient_fields.append('nid')
+        # Privacy toggle — accepts true/false/1/0/"true"/"false".
+        if 'is_private' in request.data:
+            raw = request.data.get('is_private')
+            if isinstance(raw, str):
+                raw = raw.strip().lower() in ('true', '1', 'yes', 'on')
+            patient.is_private = bool(raw)
+            patient_fields.append('is_private')
+        if conditions is not None:
+            patient.conditions = conditions
+            patient_fields.append('conditions')
+
+        with transaction.atomic():
+            if user_fields:
+                user.save(update_fields=user_fields)
+            if patient_fields:
+                patient.save(update_fields=patient_fields)
 
         return Response(PatientSerializer(patient).data)
 

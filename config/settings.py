@@ -76,8 +76,29 @@ DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.sqlite3',
         'NAME': BASE_DIR / 'db.sqlite3',
+        # SQLite allows only one writer at a time; under gunicorn's multiple
+        # worker processes, concurrent requests that write (e.g. profile
+        # saves) can otherwise fail fast with "database is locked". A longer
+        # busy timeout makes SQLite wait and retry instead of erroring out.
+        'OPTIONS': {'timeout': 20},
     }
 }
+
+# WAL (Write-Ahead Logging) lets readers proceed while a write is in
+# progress, which is the standard fix for "database is locked" errors on
+# SQLite under concurrent access (multiple gunicorn workers). Applied per
+# connection since PRAGMA settings aren't persisted in the OPTIONS dict.
+from django.db.backends.signals import connection_created  # noqa: E402
+
+
+def _set_sqlite_pragmas(sender, connection, **kwargs):
+    if connection.vendor == 'sqlite':
+        cursor = connection.cursor()
+        cursor.execute('PRAGMA journal_mode=WAL;')
+        cursor.execute('PRAGMA busy_timeout=20000;')
+
+
+connection_created.connect(_set_sqlite_pragmas)
 
 AUTH_PASSWORD_VALIDATORS = [
     {'NAME': 'django.contrib.auth.password_validation.UserAttributeSimilarityValidator'},
