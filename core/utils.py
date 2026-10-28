@@ -1,4 +1,21 @@
 import random
+import re
+
+
+_BD_MOBILE_RE = re.compile(r'^01[3-9]\d{8}$')
+
+
+def normalize_bd_phone(raw):
+    """Return a Bangladeshi mobile number as `01XXXXXXXXX`, or None if invalid.
+
+    Accepts the forms people actually type: `+8801…`, `8801…`, `01…`, with
+    spaces or dashes. Field prescriptions are matched to accounts by this
+    value, so every write and lookup of a phone must go through here.
+    """
+    digits = re.sub(r'\D', '', raw or '')
+    if digits.startswith('880'):
+        digits = digits[2:]
+    return digits if _BD_MOBILE_RE.match(digits) else None
 
 
 def _first_active_hospital():

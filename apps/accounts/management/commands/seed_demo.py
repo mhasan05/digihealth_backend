@@ -287,6 +287,18 @@ class Command(BaseCommand):
             patients.append(patient)
         self.stdout.write(f'  Patients: {len(patients)} created/found')
 
+        # ── Field staff (mobile app) ──────────────────────────────────────────
+        from apps.field_collection.models import FieldStaff
+        field_user, created = get_or_create_user(
+            phone='01755000001',
+            password='demo1234',
+            name='Karim Field Staff',
+            health_id=make_health_id(600),
+            roles=['field_staff'],
+        )
+        FieldStaff.objects.get_or_create(user=field_user, defaults={'area': 'Mirpur, Dhaka', 'created_by': admin_user})
+        self.stdout.write(f'  Field staff: {field_user.phone} ({"created" if created else "exists"})')
+
         # ── Multi-role user ────────────────────────────────────────────────────
         multi_user, created = get_or_create_user(
             phone='01788000001',
@@ -350,7 +362,6 @@ class Command(BaseCommand):
                     patient=patient,
                     name=f'Blood Test Report {i+1}',
                     defaults={
-                        'file_url': f'https://example.com/reports/{patient.id}/report{i+1}.pdf',
                         'size': random.randint(50000, 500000),
                     }
                 )
@@ -506,3 +517,4 @@ class Command(BaseCommand):
         self.stdout.write('  pathologist: 01733000001 / demo1234')
         self.stdout.write('  patient:     01799000001 / demo1234')
         self.stdout.write('  multiRole:   01788000001 / demo1234')
+        self.stdout.write('  fieldStaff:  01755000001 / demo1234')

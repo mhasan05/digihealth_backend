@@ -46,3 +46,21 @@ def read_role_application_file_token(token: str, max_age: int = ROLE_APPLICATION
     if not application_id or field not in ('document', 'facility_photo'):
         return None
     return application_id, field
+
+
+FIELD_PRESCRIPTION_FILE_SALT = 'field-prescription-file-v1'
+FIELD_PRESCRIPTION_FILE_MAX_AGE_SECONDS = 30 * 60
+
+
+def make_field_prescription_file_token(image_id) -> str:
+    signer = TimestampSigner(salt=FIELD_PRESCRIPTION_FILE_SALT)
+    return signer.sign(str(image_id))
+
+
+def read_field_prescription_file_token(token: str, max_age: int = FIELD_PRESCRIPTION_FILE_MAX_AGE_SECONDS):
+    """Return the verified image_id (str) or None if invalid/expired."""
+    signer = TimestampSigner(salt=FIELD_PRESCRIPTION_FILE_SALT)
+    try:
+        return signer.unsign(token, max_age=max_age)
+    except (BadSignature, SignatureExpired):
+        return None

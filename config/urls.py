@@ -2,6 +2,7 @@ from django.contrib import admin
 from django.urls import path, include
 from apps.patients.views import ReportFileView
 from apps.role_applications.views import RoleApplicationFileView
+from apps.field_collection.views import FieldPrescriptionFileView
 
 urlpatterns = [
     path('admin/', admin.site.urls),
@@ -19,6 +20,8 @@ urlpatterns = [
     path('api/patient/', include('apps.finance.urls')),
     # Doctor portal
     path('api/doctor/', include('apps.staff.doctor_urls')),
+    # Field staff mobile app
+    path('api/field/', include('apps.field_collection.urls')),
     # Signed-URL file delivery for medical reports.
     # NOTE: We intentionally do NOT serve MEDIA_URL via django.conf.urls.static
     # here — that would expose /media/reports/<health_id>/<file> to anyone who
@@ -27,4 +30,6 @@ urlpatterns = [
     # Signed-URL file delivery for role-application documents/photos — same
     # rationale as the report file view above.
     path('api/files/role-applications/', RoleApplicationFileView.as_view(), name='role-application-file'),
+    # Signed-URL file delivery for field-collected prescription images.
+    path('api/files/field-prescriptions/', FieldPrescriptionFileView.as_view(), name='field-prescription-file'),
 ]

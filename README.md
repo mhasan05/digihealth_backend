@@ -43,6 +43,7 @@ python manage.py runserver
 | Pathologist | 01733000001  | demo1234  |
 | Patient     | 01799000001  | demo1234  |
 | Multi-Role  | 01788000001  | demo1234  |
+| Field Staff | 01755000001  | demo1234  |
 
 ## API Base URL
 

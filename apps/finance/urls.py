@@ -8,6 +8,7 @@ from apps.patients.views import (
     PrivacyLogView,
 )
 from apps.role_applications.views import MyRoleApplicationListView
+from apps.field_collection.views import PatientFieldPrescriptionListView, PatientFieldPrescriptionDisputeView
 
 # These are the /api/patient/* routes
 urlpatterns = [
@@ -18,4 +19,6 @@ urlpatterns = [
     path('reports/<uuid:pk>/', MedicalReportDetailView.as_view(), name='patient-report-detail'),
     path('privacy-log/', PrivacyLogView.as_view(), name='patient-privacy-log'),
     path('role-applications/', MyRoleApplicationListView.as_view(), name='patient-role-application-list'),
+    path('field-prescriptions/', PatientFieldPrescriptionListView.as_view(), name='patient-field-prescription-list'),
+    path('field-prescriptions/<uuid:pk>/dispute/', PatientFieldPrescriptionDisputeView.as_view(), name='patient-field-prescription-dispute'),
 ]

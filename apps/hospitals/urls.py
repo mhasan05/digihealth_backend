@@ -4,6 +4,10 @@ from apps.staff.views import AdminDoctorListView, AdminDoctorDetailView, AdminDo
 from apps.role_applications.views import (
     AdminRoleApplicationListView, AdminRoleApplicationApproveView, AdminRoleApplicationRejectView,
 )
+from apps.field_collection.views import (
+    AdminFieldStaffListView, AdminFieldStaffDetailView,
+    AdminFieldPrescriptionListView, AdminFieldPrescriptionDetailView,
+)
 
 urlpatterns = [
     path('dashboard/', AdminDashboardView.as_view(), name='admin-dashboard'),
@@ -16,4 +20,8 @@ urlpatterns = [
     path('role-applications/', AdminRoleApplicationListView.as_view(), name='admin-role-application-list'),
     path('role-applications/<uuid:pk>/approve/', AdminRoleApplicationApproveView.as_view(), name='admin-role-application-approve'),
     path('role-applications/<uuid:pk>/reject/', AdminRoleApplicationRejectView.as_view(), name='admin-role-application-reject'),
+    path('field-staff/', AdminFieldStaffListView.as_view(), name='admin-field-staff-list'),
+    path('field-staff/<uuid:pk>/', AdminFieldStaffDetailView.as_view(), name='admin-field-staff-detail'),
+    path('field-prescriptions/', AdminFieldPrescriptionListView.as_view(), name='admin-field-prescription-list'),
+    path('field-prescriptions/<uuid:pk>/', AdminFieldPrescriptionDetailView.as_view(), name='admin-field-prescription-detail'),
 ]

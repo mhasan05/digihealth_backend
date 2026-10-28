@@ -30,3 +30,8 @@ class IsPatient(BasePermission):
 class IsDoctor(BasePermission):
     def has_permission(self, request, view):
         return request.user.is_authenticated and 'doctor' in request.user.roles
+
+
+class IsFieldStaff(BasePermission):
+    def has_permission(self, request, view):
+        return request.user.is_authenticated and 'field_staff' in request.user.roles

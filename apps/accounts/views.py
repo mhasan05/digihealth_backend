@@ -8,7 +8,8 @@ from rest_framework_simplejwt.tokens import RefreshToken
 from .models import User, ActivityEvent
 from .serializers import UserSerializer
 from apps.patients.models import Patient
-from core.utils import generate_health_id, validate_demographics
+from core.utils import generate_health_id, validate_demographics, normalize_bd_phone
+from apps.field_collection.services import link_field_prescriptions
 
 
 def get_tokens_for_user(user):
@@ -32,7 +33,12 @@ class LoginView(APIView):
             if method == 'health_id':
                 user = User.objects.get(health_id=identifier)
             else:
-                user = User.objects.get(phone=identifier)
+                # Accounts are stored as 01XXXXXXXXX; fall back to the raw value
+                # for any older account saved in another format.
+                normalized = normalize_bd_phone(identifier)
+                user = (
+                    User.objects.filter(phone=normalized).first() if normalized else None
+                ) or User.objects.get(phone=identifier)
         except User.DoesNotExist:
             return Response({'detail': 'ফোন নম্বর বা পাসওয়ার্ড সঠিক নয়'}, status=status.HTTP_401_UNAUTHORIZED)
 
@@ -54,12 +60,17 @@ class RegisterView(APIView):
     permission_classes = [AllowAny]
 
     def post(self, request):
-        phone = request.data.get('phone', '').strip()
+        raw_phone = request.data.get('phone', '').strip()
         password = request.data.get('password', '')
         name = request.data.get('name', '').strip()
 
-        if not phone or not password or not name:
+        if not raw_phone or not password or not name:
             return Response({'detail': 'Phone, password and name are required.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        # Normalized so field-collected prescriptions for this number match.
+        phone = normalize_bd_phone(raw_phone)
+        if not phone:
+            return Response({'detail': 'সঠিক মোবাইল নম্বর দিন (01XXXXXXXXX)।'}, status=status.HTTP_400_BAD_REQUEST)
 
         if User.objects.filter(phone=phone).exists():
             return Response({'detail': 'এই ফোন নম্বরে ইতোমধ্যে একটি অ্যাকাউন্ট আছে।'}, status=status.HTTP_400_BAD_REQUEST)
@@ -87,6 +98,7 @@ class RegisterView(APIView):
                 type='patient_registered',
                 description=f'New patient registered: {name} ({phone})',
             )
+            link_field_prescriptions(user)
 
         token = get_tokens_for_user(user)
         return Response({

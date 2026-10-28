@@ -11,7 +11,8 @@ SECRET_KEY = os.environ.get('SECRET_KEY', 'django-insecure-fallback-key-for-dev'
 
 DEBUG = os.environ.get('DEBUG', 'True') == 'True'
 
-ALLOWED_HOSTS = os.environ.get('ALLOWED_HOSTS', 'localhost,127.0.0.1').split(',')
+# 10.0.2.2 is how the Android emulator reaches this machine (DigiHealth Field app).
+ALLOWED_HOSTS = os.environ.get('ALLOWED_HOSTS', 'localhost,127.0.0.1,10.0.2.2').split(',')
 
 DJANGO_APPS = [
     'django.contrib.admin',
@@ -36,6 +37,7 @@ LOCAL_APPS = [
     'apps.clinical',
     'apps.finance',
     'apps.role_applications',
+    'apps.field_collection',
 ]
 
 INSTALLED_APPS = DJANGO_APPS + THIRD_PARTY_APPS + LOCAL_APPS
