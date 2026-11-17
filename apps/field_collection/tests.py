@@ -8,6 +8,7 @@ from rest_framework.test import APITestCase
 
 from apps.accounts.models import User
 from apps.patients.models import Patient
+from core.consent import CURRENT_CONSENT_VERSION
 from core.utils import normalize_bd_phone
 from .models import FieldPrescription
 
@@ -54,7 +55,10 @@ class FieldPrescriptionFlowTests(APITestCase):
 
     def _register(self, phone):
         self.client.force_authenticate(None)
-        res = self.client.post('/api/auth/register/', {'phone': phone, 'password': 'pass1234', 'name': 'Rahim'}, format='json')
+        res = self.client.post('/api/auth/register/', {
+            'phone': phone, 'password': 'pass1234', 'name': 'Rahim',
+            'consent_accepted': True, 'consent_version': CURRENT_CONSENT_VERSION,
+        }, format='json')
         self.assertEqual(res.status_code, 201, res.data)
         return User.objects.get(phone=normalize_bd_phone(phone))
 
@@ -154,3 +158,45 @@ class FieldPrescriptionFlowTests(APITestCase):
         self.client.force_authenticate(self.staff_user)
         self.assertEqual(self.client.get('/api/admin/field-prescriptions/').status_code, 403)
         self.assertEqual(self.client.get('/api/patient/field-prescriptions/').status_code, 403)
+
+
+@override_settings(MEDIA_ROOT=TEMP_MEDIA)
+class PurgeUnlinkedPrescriptionsTests(APITestCase):
+    def setUp(self):
+        from .models import FieldPrescriptionImage, FieldStaff
+        staff_user = User.objects.create_user(
+            phone='01755000001', password='pass1234', name='Staff', health_id='DH-S', roles=['field_staff'],
+        )
+        self.staff = FieldStaff.objects.create(user=staff_user)
+        self.Image = FieldPrescriptionImage
+
+    def _make(self, phone, days_old, patient=None, status='unclaimed'):
+        from datetime import timedelta
+        from django.utils import timezone
+        rx = FieldPrescription.objects.create(
+            phone=phone, consent_given=True, collected_by=self.staff, patient=patient, status=status,
+        )
+        FieldPrescription.objects.filter(pk=rx.pk).update(collected_at=timezone.now() - timedelta(days=days_old))
+        image = self.Image.objects.create(prescription=rx, file=_image(), page_no=1)
+        return rx, image.file.path
+
+    def test_deletes_only_old_unlinked_prescriptions_and_their_files(self):
+        import os
+        from django.core.management import call_command
+        patient_user = User.objects.create_user(
+            phone='01912345678', password='pass1234', name='P', health_id='DH-P', roles=['patient'],
+        )
+        patient = Patient.objects.create(user=patient_user)
+
+        old, old_path = self._make('01812345678', days_old=200)
+        disputed, _ = self._make('01812345679', days_old=200, status='disputed')
+        recent, recent_path = self._make('01812345670', days_old=30)
+        linked, _ = self._make('01912345678', days_old=400, patient=patient, status='claimed')
+
+        call_command('purge_unlinked_prescriptions', '--dry-run', stdout=open(os.devnull, 'w'))
+        self.assertEqual(FieldPrescription.objects.count(), 4)
+
+        call_command('purge_unlinked_prescriptions', stdout=open(os.devnull, 'w'))
+        self.assertEqual(set(FieldPrescription.objects.values_list('pk', flat=True)), {recent.pk, linked.pk})
+        self.assertFalse(os.path.exists(old_path))
+        self.assertTrue(os.path.exists(recent_path))

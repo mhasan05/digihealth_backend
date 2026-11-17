@@ -10,6 +10,7 @@ from .serializers import UserSerializer
 from apps.patients.models import Patient
 from core.utils import generate_health_id, validate_demographics, normalize_bd_phone
 from apps.field_collection.services import link_field_prescriptions
+from core.consent import CURRENT_CONSENT_VERSION, record_consent
 
 
 def get_tokens_for_user(user):
@@ -67,6 +68,15 @@ class RegisterView(APIView):
         if not raw_phone or not password or not name:
             return Response({'detail': 'Phone, password and name are required.'}, status=status.HTTP_400_BAD_REQUEST)
 
+        # The privacy & consent notice must be accepted before an account exists.
+        if request.data.get('consent_accepted') is not True:
+            return Response({'detail': 'অ্যাকাউন্ট খুলতে গোপনীয়তা ও সম্মতি বিজ্ঞপ্তিতে সম্মতি দিন।'}, status=status.HTTP_400_BAD_REQUEST)
+        if request.data.get('consent_version') != CURRENT_CONSENT_VERSION:
+            return Response(
+                {'detail': 'The privacy notice has been updated. Please reload the page.', 'current_version': CURRENT_CONSENT_VERSION},
+                status=status.HTTP_409_CONFLICT,
+            )
+
         # Normalized so field-collected prescriptions for this number match.
         phone = normalize_bd_phone(raw_phone)
         if not phone:
@@ -98,6 +108,7 @@ class RegisterView(APIView):
                 type='patient_registered',
                 description=f'New patient registered: {name} ({phone})',
             )
+            record_consent(user, request, 'register', request.data.get('language', ''))
             link_field_prescriptions(user)
 
         token = get_tokens_for_user(user)
@@ -105,6 +116,22 @@ class RegisterView(APIView):
             'user': UserSerializer(user).data,
             'token': token,
         }, status=status.HTTP_201_CREATED)
+
+
+class ConsentView(APIView):
+    """Accept the current privacy & consent notice — shown on first login to
+    patients who registered before it existed, or after the text changes.
+    Body: { "version": "<CURRENT_CONSENT_VERSION>", "language": "bn" | "en" }"""
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        if request.data.get('version') != CURRENT_CONSENT_VERSION:
+            return Response(
+                {'detail': 'The privacy notice has been updated. Please reload the page.', 'current_version': CURRENT_CONSENT_VERSION},
+                status=status.HTTP_409_CONFLICT,
+            )
+        record_consent(request.user, request, 'login', request.data.get('language', ''))
+        return Response({'user': UserSerializer(request.user).data})
 
 
 class LogoutView(APIView):

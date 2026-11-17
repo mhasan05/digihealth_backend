@@ -1,6 +1,6 @@
 from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
-from .models import User, ActivityEvent
+from .models import User, ActivityEvent, ConsentRecord
 
 
 @admin.register(User)
@@ -32,3 +32,18 @@ class ActivityEventAdmin(admin.ModelAdmin):
     search_fields   = ('type', 'description')
     readonly_fields = ('id', 'timestamp')
     ordering        = ('-timestamp',)
+
+
+@admin.register(ConsentRecord)
+class ConsentRecordAdmin(admin.ModelAdmin):
+    list_display    = ('user', 'version', 'channel', 'language', 'ip_address', 'accepted_at')
+    list_filter     = ('version', 'channel')
+    search_fields   = ('user__name', 'user__phone')
+    readonly_fields = [f.name for f in ConsentRecord._meta.fields]
+
+    # Proof of consent: view only.
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False
